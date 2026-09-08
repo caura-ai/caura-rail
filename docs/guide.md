@@ -229,7 +229,7 @@ writes. The server enforces access; the scope describes intent.
 |---|---|
 | `agent_id` / `agentId` | Required. The writing and recalling agent. |
 | `fleet_id` / `fleetId` | Optional. A team of agents that share memory. |
-| `visibility` | `AGENT` / `"scope_agent"` (default): only this agent recalls it. `TEAM` / `"scope_team"`: agents in the fleet; requires a fleet. `ORG` / `"scope_org"`: every agent in the tenant. |
+| `visibility` | `AGENT` / `"scope_agent"` (default): only the agent that wrote it recalls it; no other agent can read it, whatever scope they use. `TEAM` / `"scope_team"`: agents in the fleet; requires a fleet. `ORG` / `"scope_org"`: every agent in the tenant. |
 | `tenant_id` / `tenantId` | Optional. Must match the store's configured or discovered tenant. |
 
 Use `for_agent` / `forAgent` to reuse a scope for another agent in the same fleet:
@@ -305,8 +305,11 @@ Rules that keep extraction safe:
 - Facts are trimmed and deduplicated within a turn before writing.
 - The server requires stored content to be 10 to 10,000 characters. Shorter facts
   come back as `rejected` with HTTP 422.
-- A fact identical to an existing memory in the same scope comes back as
-  `deduplicated` with the existing memory's `id`.
+- A fact that matches an existing memory in the same scope comes back as
+  `deduplicated` with the existing memory's `id`. The server also treats a fact
+  that is semantically very close to an existing one as a duplicate, so two
+  statements that differ only in a detail may collapse into the older memory.
+  Put the details that make a fact distinct into the fact text itself.
 - Async extractors are supported by `AsyncRail` and by the TypeScript `Rail`. The
   synchronous Python `Rail` treats a coroutine as an extraction failure.
 
