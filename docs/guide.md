@@ -78,9 +78,27 @@ export CAURA_URL=http://localhost:8000 CAURA_API_KEY=standalone
 ```
 
 The default compose file runs the server in standalone mode: one tenant named
-`default`, no API key check, and a deterministic local embedding provider, so no
-LLM or embedding keys are needed. Rail discovers the `default` tenant by itself.
+`default` and no API key check. Rail discovers the `default` tenant by itself.
 If you set `CAURA_API_KEY` on the server, use the same value in the client.
+
+**Configure a real embedding provider before judging recall.** Out of the box
+the server uses a hash-based placeholder embedder (`EMBEDDING_PROVIDER=fake`)
+that only matches facts sharing literal words with the query. It keeps the
+quick start free of API keys, but it is not how Caura recalls in production:
+a query about "weather" will not find "heavy rain". For realistic recall,
+create `.env` next to the compose file before starting:
+
+```bash
+cat > .env <<'EOF'
+EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+EOF
+docker compose up -d --wait
+```
+
+The server's `.env.example` lists the alternatives, including a local
+open-source embedding model behind the `embed-local` compose profile. Managed
+Caura always uses real embeddings.
 
 ## Your first turn
 
@@ -96,10 +114,11 @@ with RestMemoryStore.from_env() as store:
     rail = Rail(store, scope)
     with rail.turn("Remember: We use Terraform for all infrastructure.") as turn:
         turn.reply = "Got it."
-    assert turn.writes[0].status == "written"
+    # "written" the first time; "deduplicated" when the fact already exists.
+    assert turn.writes[0].status in ("written", "deduplicated")
     assert turn.writes[0].id is not None
 
-    # The next turn recalls it. Search matches on shared words.
+    # The next turn recalls it. Recall is semantic: ask about the topic.
     with rail.turn("What do we use for infrastructure?") as turn:
         assert "Terraform" in turn.context.text
         turn.reply = "You use Terraform."
@@ -116,7 +135,8 @@ const rail = new Rail({
 });
 
 const first = await rail.turn("Remember: We use Terraform for all infrastructure.", () => "Got it.");
-assert.equal(first.writes[0]?.status, "written");
+// "written" the first time; "deduplicated" when the fact already exists.
+assert.ok(["written", "deduplicated"].includes(first.writes[0]?.status ?? ""));
 
 const second = await rail.turn("What do we use for infrastructure?", (_, context) => {
   assert.match(context.text, /Terraform/);
@@ -130,6 +150,12 @@ The Python `turn` is a context manager because your code runs in the middle. Set
 nothing. The TypeScript `turn` takes your agent as a callback and returns a
 `TurnResult` once writes are done. Both offer `run(message, agent)` when you only
 want the reply string.
+
+Memory is persistent, so a fact your program stores on its first run is already
+there on the second. The server answers a repeated write with `deduplicated` and
+the existing memory's `id`. Treat `written` and `deduplicated` as the same
+success when your code checks write results; only `rejected` and `deferred` need
+attention.
 
 ## Feed context to your model
 
@@ -159,6 +185,34 @@ with RestMemoryStore.from_env() as store:
 If you need the structured pieces instead of the text, read `context.keystones`
 (rules with `title`, `content`, `weight`) and `context.facts` (`id`, `content`,
 `agent_id`).
+
+### Getting the facts you need
+
+Recall is semantic search over the user's message, limited to `top_k` results
+(default 8, at most 20). A broad message such as "what is the plan?" ranks
+against every stored fact, so specific facts can fall outside the top results.
+Two practices keep recall reliable:
+
+- Ask specific questions and raise `top_k` for assistants that need a wide view.
+- When a turn must have a particular kind of fact, run a focused `recall(query)`
+  for it before the turn and combine the two contexts yourself. `recall` does not
+  count as a turn and writes nothing.
+
+```python
+from caura_rail import MemoryScope, Rail, RestMemoryStore
+
+with RestMemoryStore.from_env() as store:
+    rail = Rail(store, MemoryScope(agent_id="liaison", fleet_id="ops"), top_k=12)
+    policy = rail.recall("boarding policy for passengers with reduced mobility")
+    with rail.turn("Can I get to Harbor before 17:00?") as turn:
+        facts = {f.id: f for f in turn.context.facts + policy.facts}  # merge, deduplicate by id
+        turn.reply = f"Considering {len(facts)} facts.\n" + turn.context.text
+```
+
+`RecallContext.text` and `degraded` are computed from `facts` and `keystones`.
+Build a new context from merged facts rather than copying the object: in
+TypeScript, spreading a `RecallContext` into a plain object drops those
+computed properties.
 
 The context is capped at `max_context_chars` (default 16,000 characters). Rail
 keeps every rule and drops facts from the end until the text fits, recording
@@ -219,7 +273,7 @@ with RestMemoryStore.from_env() as store:
     rail = Rail(store, MemoryScope(agent_id="assistant"), extractor=preferences_only)
     with rail.turn("I prefer short answers.") as turn:
         turn.reply = "Sure."
-    assert [w.status for w in turn.writes] == ["written"]
+    assert len(turn.writes) == 1 and turn.writes[0].status in ("written", "deduplicated")
 
     recall_only = Rail(store, MemoryScope(agent_id="assistant"), extractor=lambda *_: [])
     with recall_only.turn("Remember: this will not be stored.") as turn:
@@ -237,7 +291,8 @@ const preferencesOnly = (message: string, _reply: string): string[] =>
 const store = RestMemoryStore.fromEnv(process.env);
 const rail = new Rail({ store, scope: new MemoryScope({ agentId: "assistant" }), extractor: preferencesOnly });
 const turn = await rail.turn("I prefer short answers.", () => "Sure.");
-assert.deepEqual(turn.writes.map(w => w.status), ["written"]);
+assert.equal(turn.writes.length, 1);
+assert.ok(["written", "deduplicated"].includes(turn.writes[0]?.status ?? ""));
 ```
 
 Rules that keep extraction safe:
@@ -259,9 +314,30 @@ Rules that keep extraction safe:
 
 Keystones are rules your organization stores in Caura. Rail fetches them on every
 recall, sorts them by weight (100, 50, 25 for high, medium, low), and puts them
-ahead of facts in the context. Rules are managed through the Caura API or UI, not
-through Rail. Rules scoped to an agent are returned only when the scope also names
-a fleet.
+ahead of facts in the context. Rules scoped to an agent are returned only when the
+scope also names a fleet.
+
+Rail reads rules; it does not write them. Create and remove them with the Caura
+API (or the UI on managed Caura). One rule for a fleet, using the same key and
+tenant your Rail store uses:
+
+```bash
+curl -X POST "$CAURA_URL/api/v1/keystones" \
+  -H "X-API-Key: $CAURA_API_KEY" -H "X-Tenant-ID: default" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "default", "fleet_id": "ops", "doc_id": "eu-residency",
+       "title": "Residency", "content": "Keep customer data in the EU.",
+       "scope": "fleet", "weight": "high"}'
+
+curl -X DELETE "$CAURA_URL/api/v1/keystones/eu-residency?tenant_id=default&fleet_id=ops" \
+  -H "X-API-Key: $CAURA_API_KEY" -H "X-Tenant-ID: default"
+```
+
+`scope` is `tenant`, `fleet`, or `agent` (agent rules also need `agent_id`);
+`weight` is `low`, `med`, or `high`; `doc_id` is a lowercase slug and is the id
+you delete by. Replace `default` with your tenant on multi-tenant deployments.
+After that, `rail.recall(...)` for any agent in fleet `ops` starts with
+`### GOVERNANCE RULES` followed by `- Residency: Keep customer data in the EU.`
 
 By default a failure to load rules degrades the turn but lets the agent run. Set
 `require_keystones` / `requireKeystones` when the agent must not run without

@@ -141,6 +141,7 @@ anything else, or return an empty list to make Rail recall-only.
 | Python | 3.10, 3.11, 3.12, 3.13, 3.14 |
 | Node.js | 22, 24 |
 | Caura server | Open-source release backend-v2.47.5 and the REST contract it documents |
+| Embeddings | Recall quality depends on the server's embedding provider. The open-source quick start ships a placeholder embedder; see [Self-hosted Caura](docs/guide.md#self-hosted-caura). |
 
 Every code block in this README and in `docs/` is executed and type-checked in CI.
 

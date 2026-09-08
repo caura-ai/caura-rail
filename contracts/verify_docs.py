@@ -63,13 +63,16 @@ def main() -> None:
                     continue
                 snippet = scratch / f"{path.stem}_{index}.{'py' if lang == 'python' else 'ts'}"
                 snippet.write_text(code)
-                # Each block gets an empty backend so blocks cannot depend on each other.
+                # Each block gets an empty backend so blocks cannot depend on each other,
+                # and runs twice against it: memory persists, so a block must also hold
+                # when the facts it writes already exist.
                 with serve() as (url, _):
                     env = {**os.environ, "CAURA_URL": url, "CAURA_API_KEY": API_KEY}
                     env.pop("CAURA_TENANT", None)
                     try:
                         if lang == "python":
-                            run([sys.executable, str(snippet)], scratch, env)
+                            for _ in range(2):
+                                run([sys.executable, str(snippet)], scratch, env)
                             run(
                                 [
                                     sys.executable,
@@ -84,16 +87,17 @@ def main() -> None:
                                 env,
                             )
                         else:
-                            run(
-                                [
-                                    "node",
-                                    "--experimental-strip-types",
-                                    "--no-warnings",
-                                    str(snippet),
-                                ],
-                                scratch,
-                                env,
-                            )
+                            for _ in range(2):
+                                run(
+                                    [
+                                        "node",
+                                        "--experimental-strip-types",
+                                        "--no-warnings",
+                                        str(snippet),
+                                    ],
+                                    scratch,
+                                    env,
+                                )
                             run(
                                 [
                                     tsc,
@@ -117,7 +121,7 @@ def main() -> None:
                         raise SystemExit(f"FAIL {label}\n{exc}") from None
     print(
         f"Documentation verified: {counts['python']} Python and {counts['ts']} TypeScript blocks "
-        f"ran and type-checked; {counts['skipped']} marked no-run."
+        f"ran twice each and type-checked; {counts['skipped']} marked no-run."
     )
 
 

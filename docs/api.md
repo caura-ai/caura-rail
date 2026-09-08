@@ -109,6 +109,11 @@ are what `Rail.turn` / `AsyncRail.turn` return.
 | `degraded` | boolean | `errors` is nonempty. |
 | `text` | string | `### GOVERNANCE RULES` section with `- title: content` lines, blank line, `### RECALLED MEMORY` section with `- content` lines. Sections are omitted when empty; the whole string is empty when nothing was recalled. |
 
+`RecallContext` is a class. `degraded` and `text` are computed on access from
+`errors`, `keystones`, and `facts`; they are not stored fields. Copying the
+object into a plain dict or spreading it into a plain JavaScript object keeps
+`facts`, `keystones`, and `errors` but loses `text` and `degraded`.
+
 ## WriteResult
 
 | Field | Meaning |
