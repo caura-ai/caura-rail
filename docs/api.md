@@ -128,7 +128,7 @@ object into a plain dict or spreading it into a plain JavaScript object keeps
 
 Clients for the Caura REST API.
 
-Python: `RestMemoryStore(base_url="http://localhost:8000", api_key="standalone", tenant_id=None, timeout=5.0, *, client=None)`
+Python: `RestMemoryStore(base_url="http://localhost:8000", api_key="standalone", tenant_id=None, timeout=15.0, *, client=None)`
 Python: `AsyncRestMemoryStore(...)` with an optional `httpx.AsyncClient`.
 TypeScript: `new RestMemoryStore({ baseUrl?, apiKey?, tenantId?, timeoutMs?, fetch? })`
 

@@ -21,6 +21,8 @@ First stable release.
 - Tenant discovery from `GET /api/v1/whoami` when no tenant is configured.
 - Server limits applied client-side: `top_k` 1 to 20 and 5,000-character search
   queries.
+- Default HTTP timeout of 15 seconds per request, measured against writes with
+  server-side enrichment and first requests through the Caura gateway.
 - Python package is fully typed (`py.typed`, strict mypy) and exports
   `MemoryStore` / `AsyncMemoryStore` protocols, `Turn` / `AsyncTurn`, and callable
   aliases. TypeScript ships declarations.
