@@ -1,0 +1,9 @@
+{
+  "name": "caura-rail-workspace",
+  "private": true,
+  "workspaces": ["packages/typescript"],
+  "scripts": {
+    "build": "npm run build --workspace @caura/rail",
+    "test": "npm test --workspace @caura/rail"
+  }
+}

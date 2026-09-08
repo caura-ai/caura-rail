@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e "packages/python[dev]"
+      - run: python -m ruff check packages/python
+      - run: python -m ruff format --check packages/python
+      - run: python -m pytest packages/python/tests -q
+      - run: python -m build packages/python
+      - run: python -m twine check packages/python/dist/*
+      - name: Install wheel outside checkout
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/rail-wheel"
+          "$RUNNER_TEMP/rail-wheel/bin/python" -m pip install packages/python/dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'from caura_rail import MemoryScope, Rail, AsyncRail; assert MemoryScope(agent_id="smoke").tenant_id is None'
+
+  typescript:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Install tarball outside checkout
+        shell: bash
+        run: |
+          npm pack --workspace @caura/rail --pack-destination "$RUNNER_TEMP"
+          mkdir "$RUNNER_TEMP/rail-npm"
+          cd "$RUNNER_TEMP/rail-npm"
+          npm init -y
+          npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
+          node --input-type=module -e 'import { MemoryScope, Rail } from "@caura/rail"; if (new MemoryScope({ agentId: "smoke" }).tenantId !== undefined) process.exit(1);'
+
+  interoperability:
+    name: Python and TypeScript HTTP contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - run: python -m pip install build
+      - run: npm ci --ignore-scripts
+      - run: python -m build packages/python
+      - name: Verify installed artifacts together over HTTP
+        shell: bash
+        run: |
+          npm pack --workspace @caura/rail --pack-destination "$RUNNER_TEMP"
+          python -m venv "$RUNNER_TEMP/rail-contract-env"
+          "$RUNNER_TEMP/rail-contract-env/bin/python" -m pip install packages/python/dist/*.whl
+          mkdir "$RUNNER_TEMP/rail-contract"
+          cp -R contracts "$RUNNER_TEMP/rail-contract/contracts"
+          cd "$RUNNER_TEMP/rail-contract"
+          npm init -y
+          npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
+          "$RUNNER_TEMP/rail-contract-env/bin/python" contracts/smoke.py
