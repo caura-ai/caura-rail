@@ -1,12 +1,26 @@
 # Caura Rail for Python
 
-Development alpha. Install from this source checkout:
+Memory operations around agent turns: fetch governance rules and relevant facts
+from [Caura](https://caura.ai) before your agent runs, then extract and store
+facts from the completed turn. Fully typed, synchronous and asynchronous.
 
-    python -m pip install -e packages/python
+```bash
+python -m pip install caura-rail
+```
 
-Use Rail with RestMemoryStore for synchronous applications, or AsyncRail with
-AsyncRestMemoryStore for asynchronous applications. MemoryScope requires an
-explicit agent identity; tenant identity is configured or discovered from Caura.
+```python
+from caura_rail import MemoryScope, Rail, RestMemoryStore
 
-See the repository README for complete examples, configuration, and current limits.
-This package has not been released to PyPI.
+with RestMemoryStore.from_env() as store:  # CAURA_URL, CAURA_API_KEY
+    rail = Rail(store, MemoryScope(agent_id="support-1"))
+    with rail.turn("Remember: We deploy in eu-west-1.") as turn:
+        turn.reply = "Noted. " + turn.context.text  # pass context to your model
+    print(turn.reply, [w.status for w in turn.writes])
+```
+
+Full documentation, including the guide, API reference, and reliability
+semantics, lives in the
+[repository](https://github.com/caura-ai/caura-rail-next#readme).
+A TypeScript package with the same semantics is published as `@caura/rail`.
+
+Licensed under Apache-2.0.

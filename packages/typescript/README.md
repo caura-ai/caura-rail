@@ -1,12 +1,30 @@
 # Caura Rail for TypeScript and JavaScript
 
-Development alpha for Node.js 22+. From the repository root:
+Memory operations around agent turns: fetch governance rules and relevant facts
+from [Caura](https://caura.ai) before your agent runs, then extract and store
+facts from the completed turn. ES modules for Node.js 22+, no runtime
+dependencies, type declarations included.
 
-    npm ci
-    npm run build
+```bash
+npm install @caura/rail
+```
 
-Import Rail, RestMemoryStore, and MemoryScope from @caura/rail. JavaScript
-and TypeScript use the same asynchronous API; type declarations ship with the package.
+```ts
+import { MemoryScope, Rail, RestMemoryStore } from "@caura/rail";
 
-See the repository README for complete examples, configuration, and current limits.
-Registry publishing is disabled while the package is under development.
+const rail = new Rail({
+  store: RestMemoryStore.fromEnv(process.env), // CAURA_URL, CAURA_API_KEY
+  scope: new MemoryScope({ agentId: "support-1" }),
+});
+const turn = await rail.turn("Remember: We deploy in eu-west-1.", async (message, context) => {
+  return "Noted. " + context.text; // pass context to your model
+});
+console.log(turn.reply, turn.writes.map(w => w.status));
+```
+
+Full documentation, including the guide, API reference, and reliability
+semantics, lives in the
+[repository](https://github.com/caura-ai/caura-rail-next#readme).
+A Python package with the same semantics is published as `caura-rail`.
+
+Licensed under Apache-2.0.

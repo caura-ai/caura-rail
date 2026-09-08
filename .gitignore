@@ -13,3 +13,5 @@ dist/
 build/
 *.tgz
 .DS_Store
+.docs-*/
+dist-npm/

@@ -27,7 +27,7 @@ class Backend:
     def __call__(self, request):
         self.calls.append(request)
         assert request.headers["X-API-Key"] == "test-key"
-        if request.url.path == "/whoami":
+        if request.url.path == "/api/v1/whoami":
             return httpx.Response(200, json=CONTRACT["identity"])
         assert request.headers["X-Tenant-ID"] == CONTRACT["tenant"]
         if request.url.path == "/api/v1/keystones":
@@ -61,7 +61,7 @@ def test_sync_contract_and_discovery():
             assert turn.writes[0].status == "written"
             assert store.write(CONTRACT["fact"], SCOPE).status == "deduplicated"
         assert not client.is_closed
-    assert sum(r.url.path == "/whoami" for r in backend.calls) == 1
+    assert sum(r.url.path == "/api/v1/whoami" for r in backend.calls) == 1
 
 
 async def test_async_contract_and_discovery():
@@ -75,7 +75,7 @@ async def test_async_contract_and_discovery():
             assert turn.writes[0].status == "written"
             assert (await store.write(CONTRACT["fact"], SCOPE)).status == "deduplicated"
         assert not client.is_closed
-    assert sum(r.url.path == "/whoami" for r in backend.calls) == 1
+    assert sum(r.url.path == "/api/v1/whoami" for r in backend.calls) == 1
 
 
 @pytest.mark.parametrize("status", [401, 403, 404, 422, 429, 503])
@@ -113,7 +113,7 @@ async def test_missing_identity_never_becomes_default_tenant():
         store = AsyncRestMemoryStore(client=client)
         with pytest.raises(StoreError):
             await store.write("fact", SCOPE)
-    assert calls == ["/whoami"]
+    assert calls == ["/api/v1/whoami"]
 
 
 async def test_explicit_tenant_and_mismatch():
@@ -167,3 +167,19 @@ def test_env_overrides(monkeypatch):
     with RestMemoryStore.from_env(tenant_id="override") as store:
         assert store.base_url == "https://example.invalid"
         assert store._tenant(SCOPE) == "override"
+
+
+async def test_search_limits_match_the_server():
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"items": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        store = AsyncRestMemoryStore(tenant_id="tenant", client=client)
+        await store.recall("q" * 6000, SCOPE, top_k=20)
+        assert len(seen[0]["query"]) == 5000 and seen[0]["top_k"] == 20
+        with pytest.raises(ValueError, match="1 to 20"):
+            await store.recall("query", SCOPE, top_k=21)
+    assert len(seen) == 1

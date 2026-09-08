@@ -16,6 +16,11 @@ function string(value: unknown): string {
   return value;
 }
 
+/** Largest topK the Caura search endpoint accepts. */
+export const MAX_TOP_K = 20;
+/** Longest query the Caura search endpoint accepts; longer queries are truncated. */
+export const MAX_QUERY_CHARS = 5000;
+
 export interface StoreOptions {
   baseUrl?: string;
   apiKey?: string;
@@ -119,17 +124,20 @@ export class RestMemoryStore implements MemoryStore {
     }
     if (scope.tenantId) return scope.tenantId;
     if (!this.tenantId) {
-      this.tenantId = string(object(await this.request("GET", "/whoami")).tenant_id);
+      this.tenantId = string(object(await this.request("GET", "/api/v1/whoami")).tenant_id);
     }
     return this.tenantId;
   }
 
   async recall(query: string, scope: MemoryScope, topK = 8): Promise<Fact[]> {
     if (typeof query !== "string" || !query.trim()) throw new TypeError("query must be nonempty");
-    if (!Number.isInteger(topK) || topK < 1) throw new TypeError("topK must be positive");
+    if (!Number.isInteger(topK) || topK < 1 || topK > MAX_TOP_K) {
+      throw new TypeError("topK must be an integer from 1 to " + MAX_TOP_K);
+    }
     const tenant = await this.resolve(scope);
     const body: Record<string, unknown> = {
-      tenant_id: tenant, query, caller_agent_id: scope.agentId, top_k: topK,
+      tenant_id: tenant, query: [...query].slice(0, MAX_QUERY_CHARS).join(""),
+      caller_agent_id: scope.agentId, top_k: topK,
     };
     if (scope.fleetId) body.fleet_ids = [scope.fleetId];
     const data = object(await this.request("POST", "/api/v1/search", tenant, body));

@@ -14,7 +14,7 @@ test("shared contract: discovery, scoped requests, nested rules, write and dupli
     const parsed = new URL(url);
     paths.push(parsed.pathname);
     assert.equal(init.headers["X-API-Key"], "test-key");
-    if (parsed.pathname === "/whoami") return json(contract.identity);
+    if (parsed.pathname === "/api/v1/whoami") return json(contract.identity);
     assert.equal(init.headers["X-Tenant-ID"], contract.tenant);
     if (parsed.pathname === "/api/v1/keystones") {
       assert.deepEqual(Object.fromEntries(parsed.searchParams), {
@@ -41,7 +41,7 @@ test("shared contract: discovery, scoped requests, nested rules, write and dupli
   assert.equal(turn.degraded, false);
   assert.equal(turn.writes[0].status, "written");
   assert.equal((await store.write(contract.fact, scope)).status, "deduplicated");
-  assert.equal(paths.filter(p => p === "/whoami").length, 1);
+  assert.equal(paths.filter(p => p === "/api/v1/whoami").length, 1);
 });
 
 for (const status of [401, 403, 404, 422, 429, 503]) {
@@ -69,7 +69,7 @@ test("missing discovery identity does not become a default tenant", async () => 
     return json({ tenant_id: null });
   } });
   await assert.rejects(store.write("fact", scope), StoreError);
-  assert.deepEqual(paths, ["/whoami"]);
+  assert.deepEqual(paths, ["/api/v1/whoami"]);
 });
 
 test("explicit tenant and mismatch", async () => {
@@ -198,4 +198,17 @@ test("request timeout remains active while reading the response body", async () 
   }) });
   await assert.rejects(store.recall("query", scope), error =>
     error instanceof StoreError && error.retryable);
+});
+
+test("search limits match the server", async () => {
+  const seen = [];
+  const store = new RestMemoryStore({ tenantId: "tenant", fetch: async (_, init) => {
+    seen.push(JSON.parse(init.body));
+    return json({ items: [] });
+  } });
+  await store.recall("q".repeat(6000), scope, 20);
+  assert.equal(seen[0].query.length, 5000);
+  assert.equal(seen[0].top_k, 20);
+  await assert.rejects(store.recall("query", scope, 21), /1 to 20/);
+  assert.equal(seen.length, 1);
 });

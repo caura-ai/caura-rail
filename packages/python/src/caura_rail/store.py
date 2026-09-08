@@ -2,12 +2,22 @@
 
 import math
 import os
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 import httpx
 
 from .models import Fact, KeystoneRule, MemoryScope, StoreError, WriteResult
+
+MAX_TOP_K = 20
+"""Largest top_k the Caura search endpoint accepts."""
+
+MAX_QUERY_CHARS = 5000
+"""Longest query the Caura search endpoint accepts; longer queries are truncated."""
+
+_ConfigT = TypeVar("_ConfigT", bound="_Config")
+_SyncT = TypeVar("_SyncT", bound="RestMemoryStore")
+_AsyncT = TypeVar("_AsyncT", bound="AsyncRestMemoryStore")
 
 
 def _string(value: Any) -> str:
@@ -16,7 +26,7 @@ def _string(value: Any) -> str:
     return value
 
 
-def _object(value: Any) -> dict:
+def _object(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise StoreError("Invalid backend response: expected an object")
     return value
@@ -87,6 +97,12 @@ def _decode(response: httpx.Response, *, writing: bool = False) -> Any:
         raise StoreError("Invalid backend response: expected JSON") from exc
 
 
+def _written(data: Any) -> WriteResult:
+    if isinstance(data, WriteResult):
+        return data
+    return WriteResult("written", id=_string(_object(data).get("id")))
+
+
 class _Config:
     def __init__(
         self,
@@ -94,7 +110,7 @@ class _Config:
         api_key: str = "standalone",
         tenant_id: str | None = None,
         timeout: float = 5.0,
-    ):
+    ) -> None:
         parsed = urlparse(base_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise ValueError("base_url must be an HTTP(S) URL")
@@ -112,8 +128,9 @@ class _Config:
         self.timeout = timeout
 
     @classmethod
-    def from_env(cls, **overrides):
-        values = {
+    def from_env(cls: type[_ConfigT], **overrides: Any) -> _ConfigT:
+        """Read CAURA_URL, CAURA_API_KEY, and CAURA_TENANT; keyword overrides win."""
+        values: dict[str, Any] = {
             "base_url": os.environ.get("CAURA_URL", "http://localhost:8000"),
             "api_key": os.environ.get("CAURA_API_KEY", "standalone"),
             "tenant_id": os.environ.get("CAURA_TENANT") or None,
@@ -126,7 +143,9 @@ class _Config:
             raise StoreError("Scope tenant does not match the store tenant")
         return scope.tenant_id or self._tenant_id
 
-    def _request_options(self, path: str, tenant: str | None = None, **kwargs):
+    def _request_options(
+        self, path: str, tenant: str | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         headers = {"X-API-Key": self._api_key}
         if tenant:
             headers["X-Tenant-ID"] = tenant
@@ -139,14 +158,14 @@ class _Config:
         }
 
     @staticmethod
-    def _search(query: str, scope: MemoryScope, tenant: str, top_k: int):
+    def _search(query: str, scope: MemoryScope, tenant: str, top_k: int) -> dict[str, Any]:
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be nonempty")
-        if type(top_k) is not int or top_k < 1:
-            raise ValueError("top_k must be a positive integer")
-        body = {
+        if type(top_k) is not int or not 1 <= top_k <= MAX_TOP_K:
+            raise ValueError(f"top_k must be an integer from 1 to {MAX_TOP_K}")
+        body: dict[str, Any] = {
             "tenant_id": tenant,
-            "query": query,
+            "query": query[:MAX_QUERY_CHARS],
             "caller_agent_id": scope.agent_id,
             "top_k": top_k,
         }
@@ -155,17 +174,17 @@ class _Config:
         return body
 
     @staticmethod
-    def _rule_params(scope: MemoryScope, tenant: str):
+    def _rule_params(scope: MemoryScope, tenant: str) -> dict[str, str]:
         params = {"tenant_id": tenant, "agent_id": scope.agent_id}
         if scope.fleet_id:
             params["fleet_id"] = scope.fleet_id
         return params
 
     @staticmethod
-    def _write(fact: str, scope: MemoryScope, tenant: str):
+    def _write(fact: str, scope: MemoryScope, tenant: str) -> dict[str, Any]:
         if not isinstance(fact, str) or not fact.strip():
             raise ValueError("fact must be nonempty")
-        body = {
+        body: dict[str, Any] = {
             "tenant_id": tenant,
             "agent_id": scope.agent_id,
             "content": fact,
@@ -178,22 +197,33 @@ class _Config:
 
 
 class RestMemoryStore(_Config):
-    def __init__(self, *args, client: httpx.Client | None = None, **kwargs):
+    """Synchronous Caura REST client. Use as a context manager to close it."""
+
+    def __init__(self, *args: Any, client: httpx.Client | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._owns_client = client is None
         self._client = client if client is not None else httpx.Client()
 
-    def _request(self, method, path, *, tenant=None, writing=False, **kwargs):
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        tenant: str | None = None,
+        writing: bool = False,
+        **kwargs: Any,
+    ) -> Any:
         try:
             response = self._client.request(method, **self._request_options(path, tenant, **kwargs))
         except httpx.TransportError as exc:
             raise StoreError("Caura transport failure", retryable=True) from exc
         return _decode(response, writing=writing)
 
-    def _resolve(self, scope):
+    def _resolve(self, scope: MemoryScope) -> str:
         tenant = self._tenant(scope)
         if tenant is None:
-            self._tenant_id = _string(_object(self._request("GET", "/whoami")).get("tenant_id"))
+            identity = _object(self._request("GET", "/api/v1/whoami"))
+            self._tenant_id = _string(identity.get("tenant_id"))
             tenant = self._tenant_id
         return tenant
 
@@ -221,37 +251,45 @@ class RestMemoryStore(_Config):
 
     def write(self, fact: str, scope: MemoryScope) -> WriteResult:
         tenant = self._resolve(scope)
-        data = self._request(
-            "POST",
-            "/api/v1/memories",
-            tenant=tenant,
-            writing=True,
-            json=self._write(fact, scope, tenant),
-        )
-        return (
-            data
-            if isinstance(data, WriteResult)
-            else WriteResult("written", id=_string(_object(data).get("id")))
+        return _written(
+            self._request(
+                "POST",
+                "/api/v1/memories",
+                tenant=tenant,
+                writing=True,
+                json=self._write(fact, scope, tenant),
+            )
         )
 
-    def close(self):
+    def close(self) -> None:
+        """Close the HTTP client if this store created it."""
         if self._owns_client:
             self._client.close()
 
-    def __enter__(self):
+    def __enter__(self: _SyncT) -> _SyncT:
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc: object) -> None:
         self.close()
 
 
 class AsyncRestMemoryStore(_Config):
-    def __init__(self, *args, client: httpx.AsyncClient | None = None, **kwargs):
+    """Asynchronous Caura REST client. Use as an async context manager to close it."""
+
+    def __init__(self, *args: Any, client: httpx.AsyncClient | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._owns_client = client is None
         self._client = client if client is not None else httpx.AsyncClient()
 
-    async def _request(self, method, path, *, tenant=None, writing=False, **kwargs):
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        tenant: str | None = None,
+        writing: bool = False,
+        **kwargs: Any,
+    ) -> Any:
         try:
             response = await self._client.request(
                 method, **self._request_options(path, tenant, **kwargs)
@@ -260,11 +298,11 @@ class AsyncRestMemoryStore(_Config):
             raise StoreError("Caura transport failure", retryable=True) from exc
         return _decode(response, writing=writing)
 
-    async def _resolve(self, scope):
+    async def _resolve(self, scope: MemoryScope) -> str:
         tenant = self._tenant(scope)
         if tenant is None:
-            data = await self._request("GET", "/whoami")
-            self._tenant_id = _string(_object(data).get("tenant_id"))
+            identity = _object(await self._request("GET", "/api/v1/whoami"))
+            self._tenant_id = _string(identity.get("tenant_id"))
             tenant = self._tenant_id
         return tenant
 
@@ -292,25 +330,23 @@ class AsyncRestMemoryStore(_Config):
 
     async def write(self, fact: str, scope: MemoryScope) -> WriteResult:
         tenant = await self._resolve(scope)
-        data = await self._request(
-            "POST",
-            "/api/v1/memories",
-            tenant=tenant,
-            writing=True,
-            json=self._write(fact, scope, tenant),
-        )
-        return (
-            data
-            if isinstance(data, WriteResult)
-            else WriteResult("written", id=_string(_object(data).get("id")))
+        return _written(
+            await self._request(
+                "POST",
+                "/api/v1/memories",
+                tenant=tenant,
+                writing=True,
+                json=self._write(fact, scope, tenant),
+            )
         )
 
-    async def aclose(self):
+    async def aclose(self) -> None:
+        """Close the HTTP client if this store created it."""
         if self._owns_client:
             await self._client.aclose()
 
-    async def __aenter__(self):
+    async def __aenter__(self: _AsyncT) -> _AsyncT:
         return self
 
-    async def __aexit__(self, *exc):
+    async def __aexit__(self, *exc: object) -> None:
         await self.aclose()

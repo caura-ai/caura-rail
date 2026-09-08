@@ -3,14 +3,39 @@
 import inspect
 import re
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from threading import Lock
+from types import TracebackType
+from typing import Any, Generic, TypeVar
 
-from .models import MemoryScope, RecallContext, StoreError, WriteResult
+from .models import (
+    AsyncMemoryStore,
+    MemoryScope,
+    MemoryStore,
+    RecallContext,
+    StoreError,
+    WriteResult,
+)
+
+Extractor = Callable[[str, str], list[str]]
+"""Maps (message, reply) to facts worth storing. Return [] to store nothing."""
+
+AsyncExtractor = Callable[[str, str], "list[str] | Awaitable[list[str]]"]
+"""An Extractor that may also be an async function."""
+
+Agent = Callable[[str, RecallContext], str]
+"""Your agent: receives the user message and recalled context, returns the reply."""
+
+AsyncAgent = Callable[[str, RecallContext], "str | Awaitable[str]"]
+"""An Agent that may also be an async function."""
+
+_StoreT = TypeVar("_StoreT", MemoryStore, AsyncMemoryStore)
 
 
 def rule_extract(user_msg: str, reply: str) -> list[str]:
-    """A deliberately small heuristic over user statements, not assistant output."""
+    """Default extractor: user lines that start with Remember:, We use, We deploy,
+    Our plan, or Our contract. The assistant reply is ignored."""
     pattern = re.compile(r"^(remember:\s*|we (use|deploy)\b|our (plan|contract)\b)", re.I)
     return list(
         dict.fromkeys(
@@ -23,6 +48,8 @@ def rule_extract(user_msg: str, reply: str) -> list[str]:
 
 @dataclass
 class Telemetry:
+    """Process-local counters. Never reset by Rail."""
+
     turns_total: int = 0
     degraded_turns: int = 0
     writes_deferred: int = 0
@@ -38,9 +65,9 @@ class _Pending:
 
 
 class Outbox:
-    """In-memory queue. Every capacity eviction is counted; nothing is persisted."""
+    """In-memory queue of deferred writes. Every eviction is counted; nothing is persisted."""
 
-    def __init__(self, capacity: int = 1000):
+    def __init__(self, capacity: int = 1000) -> None:
         if type(capacity) is not int or capacity < 1:
             raise ValueError("capacity must be a positive integer")
         self.capacity = capacity
@@ -48,65 +75,69 @@ class Outbox:
         self._queue: deque[_Pending] = deque()
         self._lock = Lock()
 
-    def _push(self, item: _Pending):
+    def _push(self, item: _Pending) -> None:
         with self._lock:
             if len(self._queue) == self.capacity:
                 self._queue.popleft()
                 self._total_dropped += 1
             self._queue.append(item)
 
-    def _take(self):
+    def _take(self) -> list[_Pending]:
         with self._lock:
             batch = list(self._queue)
             self._queue.clear()
             return batch
 
-    def __len__(self):
+    def __len__(self) -> int:
         with self._lock:
             return len(self._queue)
 
     @property
-    def total_dropped(self):
+    def total_dropped(self) -> int:
+        """Items lost to capacity eviction or exhausted replay attempts."""
         with self._lock:
             return self._total_dropped
 
-    def _drop(self):
+    def _drop(self) -> None:
         with self._lock:
             self._total_dropped += 1
 
 
 @dataclass
 class TurnResult:
+    """What one turn recalled, replied, wrote, and reported."""
+
     context: RecallContext = field(default_factory=RecallContext)
     reply: str | None = None
     writes: list[WriteResult] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
-    def degraded(self):
+    def degraded(self) -> bool:
         return self.context.degraded or bool(self.errors)
 
 
-class _Core:
+class _Core(Generic[_StoreT]):
     def __init__(
         self,
-        store,
+        store: _StoreT,
         scope: MemoryScope,
         *,
-        extractor=rule_extract,
+        extractor: AsyncExtractor = rule_extract,
         outbox: Outbox | None = None,
         top_k: int = 8,
         require_keystones: bool = False,
         max_context_chars: int = 16000,
         max_facts: int = 16,
         max_fact_chars: int = 4000,
-    ):
+    ) -> None:
         for value in (top_k, max_context_chars, max_facts, max_fact_chars):
             if type(value) is not int or value < 1:
                 raise ValueError("Limits must be positive integers")
         if not isinstance(scope, MemoryScope):
             raise ValueError("scope must be a MemoryScope")
-        self.store, self.scope = store, scope
+        self.store: _StoreT = store
+        self.scope = scope
         self.extractor = extractor
         self.outbox = outbox if outbox is not None else Outbox()
         self.top_k = top_k
@@ -115,7 +146,7 @@ class _Core:
         self.max_fact_chars = max_fact_chars
         self.telemetry = Telemetry()
 
-    def _limit_context(self, ctx):
+    def _limit_context(self, ctx: RecallContext) -> RecallContext:
         facts, ctx.facts = ctx.facts, []
         if len(ctx.text) > self.max_context_chars:
             if self.require_keystones:
@@ -130,14 +161,14 @@ class _Core:
                 break
         return ctx
 
-    def _validate_facts(self, facts):
+    def _validate_facts(self, facts: object) -> list[str]:
         if not isinstance(facts, list) or len(facts) > self.max_facts:
             raise ValueError("Extractor must return a bounded list of strings")
         if any(not isinstance(f, str) or len(f) > self.max_fact_chars for f in facts):
             raise ValueError("Extractor returned an invalid fact")
         return list(dict.fromkeys(f.strip() for f in facts if f.strip()))
 
-    def _write_failed(self, fact, exc):
+    def _write_failed(self, fact: str, exc: StoreError) -> WriteResult:
         if exc.retryable:
             self.outbox._push(_Pending(fact, self.scope))
             self.telemetry.writes_deferred += 1
@@ -145,18 +176,26 @@ class _Core:
         self.telemetry.writes_rejected += 1
         return WriteResult("rejected", error=str(exc))
 
-    def _finish(self, turn):
+    def _finish(self, turn: TurnResult) -> None:
         if turn.degraded:
             self.telemetry.degraded_turns += 1
 
     @staticmethod
-    def _validate_message(message):
+    def _validate_message(message: object) -> None:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("message must be a nonempty string")
 
+    @staticmethod
+    def _validate_attempts(max_attempts: object) -> None:
+        if type(max_attempts) is not int or max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
 
-class Rail(_Core):
+
+class Rail(_Core[MemoryStore]):
+    """Synchronous memory operations around one agent's turns."""
+
     def recall(self, query: str) -> RecallContext:
+        """Fetch rules and facts for a query without running a turn."""
         self._validate_message(query)
         ctx = RecallContext()
         try:
@@ -171,18 +210,21 @@ class Rail(_Core):
             ctx.errors.append("recall: " + str(exc))
         return self._limit_context(ctx)
 
-    def turn(self, message: str):
+    def turn(self, message: str) -> "Turn":
+        """Context manager: recall on enter, extract and write on a clean exit."""
         self._validate_message(message)
-        return _Turn(self, message)
+        return Turn(self, message)
 
-    def run(self, message: str, agent) -> str:
+    def run(self, message: str, agent: Agent) -> str:
+        """Run one turn and return only the reply."""
         with self.turn(message) as turn:
-            turn.reply = agent(message, turn.context)
-        return turn.reply
+            reply = agent(message, turn.context)
+            turn.reply = reply
+        return reply
 
-    def _commit(self, message, turn):
+    def _commit(self, message: str, turn: TurnResult) -> None:
         try:
-            raw = self.extractor(message, turn.reply)
+            raw: object = self.extractor(message, turn.reply or "")
             if inspect.iscoroutine(raw):
                 raw.close()
                 raise ValueError("Use AsyncRail for asynchronous extractors")
@@ -200,8 +242,8 @@ class Rail(_Core):
             turn.writes.append(result)
 
     def flush_outbox(self, max_attempts: int = 3) -> list[WriteResult]:
-        if type(max_attempts) is not int or max_attempts < 1:
-            raise ValueError("max_attempts must be positive")
+        """Replay deferred writes once. Call after connectivity recovers."""
+        self._validate_attempts(max_attempts)
         batch, results = self.outbox._take(), []
         for i, item in enumerate(batch):
             item.attempts += 1
@@ -221,12 +263,14 @@ class Rail(_Core):
         return results
 
 
-class _Turn(TurnResult):
-    def __init__(self, rail, message):
+class Turn(TurnResult):
+    """A TurnResult that is also the context manager returned by Rail.turn()."""
+
+    def __init__(self, rail: Rail, message: str) -> None:
         super().__init__()
         self._rail, self._message = rail, message
 
-    def __enter__(self):
+    def __enter__(self) -> "Turn":
         self._rail.telemetry.turns_total += 1
         try:
             self.context = self._rail.recall(self._message)
@@ -235,7 +279,12 @@ class _Turn(TurnResult):
             raise
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         try:
             if exc_type is None and self.reply is not None:
                 if not isinstance(self.reply, str):
@@ -247,8 +296,11 @@ class _Turn(TurnResult):
             self._rail._finish(self)
 
 
-class AsyncRail(_Core):
+class AsyncRail(_Core[AsyncMemoryStore]):
+    """Asynchronous memory operations around one agent's turns."""
+
     async def recall(self, query: str) -> RecallContext:
+        """Fetch rules and facts for a query without running a turn."""
         self._validate_message(query)
         ctx = RecallContext()
         try:
@@ -263,19 +315,22 @@ class AsyncRail(_Core):
             ctx.errors.append("recall: " + str(exc))
         return self._limit_context(ctx)
 
-    def turn(self, message: str):
+    def turn(self, message: str) -> "AsyncTurn":
+        """Async context manager: recall on enter, extract and write on a clean exit."""
         self._validate_message(message)
-        return _AsyncTurn(self, message)
+        return AsyncTurn(self, message)
 
-    async def run(self, message: str, agent) -> str:
+    async def run(self, message: str, agent: AsyncAgent) -> str:
+        """Run one turn and return only the reply."""
         async with self.turn(message) as turn:
-            reply = agent(message, turn.context)
-            turn.reply = await reply if inspect.isawaitable(reply) else reply
-        return turn.reply
+            pending = agent(message, turn.context)
+            reply: str = await pending if inspect.isawaitable(pending) else pending
+            turn.reply = reply
+        return reply
 
-    async def _commit(self, message, turn):
+    async def _commit(self, message: str, turn: TurnResult) -> None:
         try:
-            raw = self.extractor(message, turn.reply)
+            raw: Any = self.extractor(message, turn.reply or "")
             facts = self._validate_facts(await raw if inspect.isawaitable(raw) else raw)
         except Exception:
             self.telemetry.extraction_failures += 1
@@ -290,8 +345,8 @@ class AsyncRail(_Core):
             turn.writes.append(result)
 
     async def flush_outbox(self, max_attempts: int = 3) -> list[WriteResult]:
-        if type(max_attempts) is not int or max_attempts < 1:
-            raise ValueError("max_attempts must be positive")
+        """Replay deferred writes once. Call after connectivity recovers."""
+        self._validate_attempts(max_attempts)
         batch, results = self.outbox._take(), []
         for i, item in enumerate(batch):
             item.attempts += 1
@@ -311,12 +366,14 @@ class AsyncRail(_Core):
         return results
 
 
-class _AsyncTurn(TurnResult):
-    def __init__(self, rail, message):
+class AsyncTurn(TurnResult):
+    """A TurnResult that is also the async context manager returned by AsyncRail.turn()."""
+
+    def __init__(self, rail: AsyncRail, message: str) -> None:
         super().__init__()
         self._rail, self._message = rail, message
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AsyncTurn":
         self._rail.telemetry.turns_total += 1
         try:
             self.context = await self._rail.recall(self._message)
@@ -325,7 +382,12 @@ class _AsyncTurn(TurnResult):
             raise
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         try:
             if exc_type is None and self.reply is not None:
                 if not isinstance(self.reply, str):

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Open-source Caura release the live job verifies against. Update deliberately.
+  CAURA_SERVER_REF: backend-v2.47.5
+
 jobs:
   python:
     name: Python ${{ matrix.python }}
@@ -23,8 +27,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e "packages/python[dev]"
-      - run: python -m ruff check packages/python
-      - run: python -m ruff format --check packages/python
+      - run: python -m ruff check . && python -m ruff format --check .
+      - run: python -m mypy --config-file packages/python/pyproject.toml packages/python/src/caura_rail examples contracts
       - run: python -m pytest packages/python/tests -q
       - run: python -m build packages/python
       - run: python -m twine check packages/python/dist/*
@@ -34,7 +38,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/rail-wheel"
           "$RUNNER_TEMP/rail-wheel/bin/python" -m pip install packages/python/dist/*.whl
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'from caura_rail import MemoryScope, Rail, AsyncRail; assert MemoryScope(agent_id="smoke").tenant_id is None'
+          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'import caura_rail; from caura_rail import MemoryScope, Rail, AsyncRail; assert caura_rail.__version__ == "1.0.0"; assert MemoryScope(agent_id="smoke").tenant_id is None'
 
   typescript:
     name: Node ${{ matrix.node }}
@@ -60,6 +64,7 @@ jobs:
           npm init -y
           npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
           node --input-type=module -e 'import { MemoryScope, Rail } from "@caura/rail"; if (new MemoryScope({ agentId: "smoke" }).tenantId !== undefined) process.exit(1);'
+          test "$(node -p 'require("@caura/rail/package.json").version')" = "1.0.0"
 
   interoperability:
     name: Python and TypeScript HTTP contract
@@ -72,18 +77,54 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
-      - run: python -m pip install build
+      - run: python -m pip install build mypy
       - run: npm ci --ignore-scripts
       - run: python -m build packages/python
-      - name: Verify installed artifacts together over HTTP
+      - name: Verify installed artifacts together over HTTP, then every documentation code block
         shell: bash
         run: |
           npm pack --workspace @caura/rail --pack-destination "$RUNNER_TEMP"
           python -m venv "$RUNNER_TEMP/rail-contract-env"
-          "$RUNNER_TEMP/rail-contract-env/bin/python" -m pip install packages/python/dist/*.whl
+          "$RUNNER_TEMP/rail-contract-env/bin/python" -m pip install mypy packages/python/dist/*.whl
           mkdir "$RUNNER_TEMP/rail-contract"
-          cp -R contracts "$RUNNER_TEMP/rail-contract/contracts"
+          cp -R contracts README.md docs "$RUNNER_TEMP/rail-contract/"
           cd "$RUNNER_TEMP/rail-contract"
           npm init -y
-          npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
+          npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz typescript@5 @types/node@24
           "$RUNNER_TEMP/rail-contract-env/bin/python" contracts/smoke.py
+          "$RUNNER_TEMP/rail-contract-env/bin/python" contracts/verify_docs.py --workdir "$PWD" README.md docs/*.md
+
+  live:
+    name: Live Caura server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: caura-ai/caura
+          ref: ${{ env.CAURA_SERVER_REF }}
+          path: caura-server
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Start Caura in standalone mode
+        working-directory: caura-server
+        run: docker compose up -d --wait --quiet-pull
+      - run: python -m pip install -e packages/python
+      - run: npm ci --ignore-scripts && npm run build
+      - name: Run live verification with both clients
+        env:
+          CAURA_URL: http://localhost:8000
+          CAURA_API_KEY: standalone
+        run: |
+          python contracts/live.py
+          python examples/fleet.py
+          node examples/fleet.mjs
+      - name: Server logs on failure
+        if: failure()
+        working-directory: caura-server
+        run: docker compose logs --tail 200 core-api

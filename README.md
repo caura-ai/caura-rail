@@ -1,131 +1,147 @@
 # Caura Rail
 
 Memory operations around agent turns, for Python and TypeScript/JavaScript.
-Rail fetches rules and relevant facts before your agent runs, then extracts
-facts from a completed turn and writes them to [Caura](https://caura.ai).
-Your application passes the recalled context into its agent.
 
-**Development alpha.** The APIs can change. Packages are installed from source;
-no registry release is available yet.
+Before your agent runs, Rail fetches the governance rules and relevant facts for
+the current message from [Caura](https://caura.ai). After the agent replies, Rail
+extracts facts worth keeping and writes them back. Your application stays in
+charge of the model call: Rail hands you prompt-ready context and reports exactly
+what was recalled, written, deferred, or rejected.
 
-## Install from source
+Rail is a stable 1.0 release. Both packages carry the same semantics and are
+tested against the same HTTP contract and against a running Caura server.
 
-Python 3.10+:
+## Install
 
-    python -m pip install -e packages/python
+Python 3.10 or newer:
 
-TypeScript / JavaScript, Node.js 22+:
+```bash
+python -m pip install caura-rail
+```
 
-    npm ci
-    npm run build
+Node.js 22 or newer, TypeScript or JavaScript:
 
-The npm workspace makes @caura/rail available to the repository examples.
+```bash
+npm install @caura/rail
+```
+
+Both packages ship type information. The Python package depends on httpx; the
+npm package has no runtime dependencies.
+
+## Connect to Caura
+
+Rail reads three environment variables when you call `RestMemoryStore.from_env()`
+in Python or `RestMemoryStore.fromEnv(process.env)` in TypeScript.
+
+| Variable | Managed Caura | Self-hosted Caura |
+|---|---|---|
+| `CAURA_URL` | `https://caura.ai` | Your server URL, for example `http://localhost:8000` |
+| `CAURA_API_KEY` | Your API key | Your configured key, or any placeholder such as `standalone` when the server runs in standalone mode |
+| `CAURA_TENANT` | Optional | Optional |
+
+When `CAURA_TENANT` is unset, Rail asks the server who the key belongs to and uses
+that tenant. A self-hosted server in standalone mode reports the tenant `default`.
+See [Connect a backend](docs/guide.md#connect-a-backend) for the details, including
+how to run Caura locally with Docker.
 
 ## Python
 
-    from caura_rail import MemoryScope, Rail, RestMemoryStore, Visibility
+```python
+from caura_rail import MemoryScope, Rail, RestMemoryStore, Visibility
 
-    scope = MemoryScope(
-        agent_id="support-1",
-        fleet_id="support",
-        visibility=Visibility.TEAM,
-    )
-    with RestMemoryStore.from_env() as store:
-        rail = Rail(store, scope)
-        with rail.turn("Remember: We deploy in eu-west-1.") as turn:
-            # Replace this with your agent, passing turn.context.text into its prompt.
-            turn.reply = "Received context: " + turn.context.text
-        print(turn.reply, turn.degraded, turn.writes)
+scope = MemoryScope(agent_id="support-1", fleet_id="support", visibility=Visibility.TEAM)
 
-For nonblocking memory I/O, use AsyncRail and AsyncRestMemoryStore with
-async context managers:
+with RestMemoryStore.from_env() as store:
+    rail = Rail(store, scope)
+    with rail.turn("Remember: We deploy in eu-west-1.") as turn:
+        # Call your model here. turn.context.text holds rules first, then facts.
+        turn.reply = "Understood. Context used:\n" + turn.context.text
+    print(turn.reply)
+    print("degraded:", turn.degraded, "writes:", [w.status for w in turn.writes])
+```
 
+Every turn does four things in order: recall, run your code, extract, write. If
+your code raises, nothing is written. If the backend is unreachable, the turn is
+marked degraded, your reply still returns, and retryable writes wait in an
+in-memory outbox that you replay with `rail.flush_outbox()`.
+
+Asynchronous applications use `AsyncRail` with `AsyncRestMemoryStore`:
+
+```python
+import asyncio
+
+from caura_rail import AsyncRail, AsyncRestMemoryStore, MemoryScope, RecallContext
+
+
+async def my_agent(message: str, context: RecallContext) -> str:
+    return "Reply to: " + message  # Use context.text in your prompt.
+
+
+async def main() -> None:
+    scope = MemoryScope(agent_id="support-1")
     async with AsyncRestMemoryStore.from_env() as store:
         rail = AsyncRail(store, scope)
-        async with rail.turn(message) as turn:
-            turn.reply = await your_agent(message, turn.context.text)
+        reply = await rail.run("Remember: Our plan renews every March.", my_agent)
+        print(reply)
 
-Import those two async classes from caura_rail. The application supplies
-message, scope, and your_agent in the second snippet.
+
+asyncio.run(main())
+```
 
 ## TypeScript and JavaScript
 
-    import { MemoryScope, Rail, RestMemoryStore } from "@caura/rail";
+```ts
+import { MemoryScope, Rail, RestMemoryStore } from "@caura/rail";
 
-    const scope = new MemoryScope({
-      agentId: "support-1",
-      fleetId: "support",
-      visibility: "scope_team",
-    });
-    const rail = new Rail({
-      store: RestMemoryStore.fromEnv(process.env),
-      scope,
-    });
-    const turn = await rail.turn("Remember: We deploy in eu-west-1.", async (message, ctx) => {
-      // Replace this with your agent and include ctx.text in its prompt.
-      return "Received context: " + ctx.text;
-    });
-    console.log(turn.reply, turn.degraded, turn.writes);
+const scope = new MemoryScope({ agentId: "support-1", fleetId: "support", visibility: "scope_team" });
+const store = RestMemoryStore.fromEnv(process.env);
+const rail = new Rail({ store, scope });
 
-Python rail.run(message, agent) and TypeScript rail.run(message, agent) return
-only the reply. Use the turn API to inspect write outcomes and errors.
+const turn = await rail.turn("Remember: We deploy in eu-west-1.", async (message, context) => {
+  // Call your model here. context.text holds rules first, then facts.
+  return "Understood. Context used:\n" + context.text;
+});
+console.log(turn.reply);
+console.log("degraded:", turn.degraded, "writes:", turn.writes.map(w => w.status));
+```
 
-## Connect a backend
+The TypeScript API is asynchronous throughout. `rail.run(message, agent)` returns
+only the reply; `rail.turn(message, agent)` returns the full result.
 
-For managed Caura, export CAURA_URL=https://caura.ai and your CAURA_API_KEY.
-For self-hosting, follow the [Caura Docker guide](https://caura.ai/docs/getting-started/self-host)
-and point CAURA_URL at its API, commonly http://localhost:8000.
-The default API key string is standalone; it only works with a backend explicitly
-configured for standalone operation.
+## What you get on every turn
 
-CAURA_TENANT is optional when the backend supports authenticated /whoami discovery.
-Otherwise configure it explicitly. Environment variables are read at construction;
-Rail does not search for or load .env files. A scope tenant must match a configured
-or discovered store tenant. Neither an unavailable discovery endpoint nor invalid
-credentials cause a silent fallback to a default tenant.
+- **Context** in `turn.context`: governance rules sorted by weight, then recalled
+  facts, plus `text` formatted for a prompt. Rules are never dropped to make room
+  for facts.
+- **Writes** in `turn.writes`: one result per extracted fact with status
+  `written`, `deduplicated`, `deferred`, or `rejected`.
+- **Diagnostics** in `turn.errors` and `turn.degraded`, and process-local counters
+  in `rail.telemetry`.
 
-The live examples create one sample memory each. Run them against a test fleet
-with credentials authorized for both example agents:
+The default extractor stores user lines that begin with `Remember:`, `We use`,
+`We deploy`, `Our plan`, or `Our contract`. Pass your own extractor to store
+anything else, or return an empty list to make Rail recall-only.
 
-    python examples/fleet.py
-    node examples/fleet.mjs
+## Documentation
 
-They require a real backend and fail if writing or recall is degraded. The
-Python/TypeScript interoperability test in contracts/smoke.py uses a local HTTP
-fixture instead; it needs no account and writes nothing to a real backend.
+- [Guide](docs/guide.md): configuration, scopes, custom extraction, governance,
+  outbox replay, bringing your own store, and troubleshooting.
+- [API reference](docs/api.md): every class, option, return value, and error in
+  both languages.
+- [Reliability](docs/reliability.md): failure classification, replay semantics,
+  and limits.
+- [Contract tests](contracts/README.md): how the packages are verified against the
+  Caura HTTP contract and against a live server.
+- [Changelog](CHANGELOG.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md).
 
-## Behavior and limits
+## Compatibility
 
-- Python offers synchronous and asynchronous clients. TypeScript is asynchronous.
-- Scope defaults to agent-private writes. Team visibility requires a fleet.
-  Scope values describe identity and desired visibility; the server enforces access.
-- Recall uses /api/v1/search for facts and /api/v1/keystones for rules. It does not
-  request an LLM-generated recall summary.
-- The default extractor recognizes user lines beginning with Remember:, We use,
-  We deploy, Our plan, or Our contract. It does not verify their truth.
-  Supply an extractor callback for application-specific extraction, or return an
-  empty list to disable automatic writes. Async clients accept async extractors.
-- Failed agent calls skip extraction and writes. Store errors are reported in the
-  turn while the agent can continue. require_keystones=True / requireKeystones: true
-  stops execution when rules cannot be loaded completely; an empty successful rules
-  response is valid.
-- The outbox is bounded and in memory. Only temporary failures are deferred;
-  authentication, permission, validation, and unknown conflicts are rejected.
-  Replay is manual, bounded, and has no background retry timer. Pending facts are
-  lost when the process exits.
-- Defaults: 5-second HTTP timeout, 8 recalled facts, 16 extracted facts of at most
-  4,000 characters each, 16,000 context characters, and 1,000 queued writes.
-  Timeouts apply per HTTP operation, not to the whole turn.
-- Rules are formatted ahead of facts. This does not guarantee model compliance,
-  prompt-injection resistance, or safe retention of arbitrary user content.
-- Use one Python Rail/store per worker. The outbox protects its queue operations;
-  the complete Rail telemetry and tenant-discovery lifecycle are not advertised as
-  thread-safe. See [reliability](docs/reliability.md).
+| Component | Verified |
+|---|---|
+| Python | 3.10, 3.11, 3.12, 3.13, 3.14 |
+| Node.js | 22, 24 |
+| Caura server | Open-source release backend-v2.47.5 and the REST contract it documents |
 
-## Develop
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for tests, package builds, and contract checks.
-The shared [contract fixtures](contracts/README.md) document the REST shapes used
-by both packages. They do not substitute for tests against a deployed Caura release.
+Every code block in this README and in `docs/` is executed and type-checked in CI.
 
 Licensed under [Apache-2.0](LICENSE).

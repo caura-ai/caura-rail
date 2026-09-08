@@ -7,7 +7,15 @@
   "tenant": "example-tenant",
   "query": "Where do we deploy?",
   "fact": "We deploy in eu-west-1.",
-  "identity": { "tenant_id": "example-tenant", "agent_id": null, "auth_mode": "tenant" },
+  "identity": {
+    "tenant_id": "example-tenant",
+    "agent_id": null,
+    "auth_source": "standalone",
+    "via_gateway": false,
+    "readable_tenant_ids": ["example-tenant"],
+    "capabilities": null,
+    "auth_mode": null
+  },
   "search_request": {
     "tenant_id": "example-tenant",
     "query": "Where do we deploy?",

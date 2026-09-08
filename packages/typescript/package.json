@@ -1,19 +1,54 @@
 {
   "name": "@caura/rail",
-  "version": "0.1.0-alpha.0",
-  "private": true,
+  "version": "1.0.0",
   "description": "Memory operations around every agent turn, for managed and self-hosted Caura.",
+  "keywords": [
+    "caura",
+    "memory",
+    "agents",
+    "llm",
+    "recall",
+    "governance"
+  ],
+  "homepage": "https://github.com/caura-ai/caura-rail-next#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caura-ai/caura-rail-next.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/caura-ai/caura-rail-next/issues"
+  },
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md", "LICENSE"],
-  "engines": { "node": ">=22" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs",
     "prepack": "npm run build"
   },
-  "devDependencies": { "typescript": "^5.9.3" }
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3"
+  }
 }

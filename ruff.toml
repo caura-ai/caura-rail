@@ -1,0 +1,7 @@
+# Shared lint settings for scripts outside packages/python (contracts/, examples/).
+# packages/python/pyproject.toml carries the same settings for the package itself.
+target-version = "py310"
+line-length = 100
+
+[lint]
+select = ["E", "F", "I"]
