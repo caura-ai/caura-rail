@@ -336,6 +336,16 @@ curl -X DELETE "$CAURA_URL/api/v1/keystones/eu-residency?tenant_id=default&fleet
 `scope` is `tenant`, `fleet`, or `agent` (agent rules also need `agent_id`);
 `weight` is `low`, `med`, or `high`; `doc_id` is a lowercase slug and is the id
 you delete by. Replace `default` with your tenant on multi-tenant deployments.
+
+Rules are authored by an agent the server trusts. A standalone server lets any
+key act as any agent: add an `X-Agent-ID` header naming an agent that has
+written at least one memory, and raise that agent's trust to 2 with
+`PATCH /api/v1/agents/<agent_id>/trust?tenant_id=<tenant>` and body
+`{"trust_level": 2}` before creating rules. On managed and multi-tenant Caura
+the gateway decides the acting agent from the credential and ignores the
+header, so author rules with an agent-scoped credential issued for that agent
+(trust level 2 or higher), or in the Caura dashboard. Reading rules needs no
+special credential; every Rail scope receives them.
 After that, `rail.recall(...)` for any agent in fleet `ops` starts with
 `### GOVERNANCE RULES` followed by `- Residency: Keep customer data in the EU.`
 
@@ -539,6 +549,8 @@ python contracts/live.py
 |---|---|---|
 | `context.errors` contains `keystones: Caura request failed (HTTP 404)` and `recall: ... (HTTP 404)` | `CAURA_URL` points at something that is not the Caura API root. | Use the API base URL without a path, for example `http://localhost:8000`. |
 | `StoreError: Caura request failed (HTTP 401)` | The API key was rejected. | Check `CAURA_API_KEY`. Self-hosted servers with a configured key require the same value. |
+| The first call of a process is `deferred` or `recall: Caura transport failure`, later calls succeed | Behind the Caura gateway the first identity resolution for a key can take several seconds while services warm up, longer than the default 5-second timeout. | Set `CAURA_TENANT` so Rail skips identity discovery, or raise the store timeout (`timeout=15` in Python, `timeoutMs: 15000` in TypeScript). |
+| Write `rejected` with HTTP 403 mentioning `fleet-scope policy` | The agent already belongs to another fleet. | Use one agent id per fleet. See [Choose a scope](#choose-a-scope). |
 | `HTTP 403` | The key cannot read the tenant you named. | Unset `CAURA_TENANT` to use the key's own tenant, or use a key authorized for it. |
 | `StoreError: Scope tenant does not match the store tenant` | `MemoryScope.tenant_id` differs from the store's configured or discovered tenant. | Drop the scope tenant or align the two. |
 | `WriteResult(status="rejected", error="Caura request failed (HTTP 422)")` | The server refused the content, usually shorter than 10 characters or longer than 10,000. | Adjust the extractor. |

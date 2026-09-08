@@ -137,7 +137,7 @@ TypeScript: `new RestMemoryStore({ baseUrl?, apiKey?, tenantId?, timeoutMs?, fet
 | `base_url` / `baseUrl` | `http://localhost:8000` | `http` or `https`; no credentials, query, or fragment. Trailing slash is removed. |
 | `api_key` / `apiKey` | `standalone` | Nonempty. Sent as `X-API-Key`. |
 | `tenant_id` / `tenantId` | unset | Nonempty when set. When unset, discovered once from `GET /api/v1/whoami` and cached on the store. |
-| `timeout` / `timeoutMs` | 5 seconds / 5,000 ms | Positive and finite. Applies per HTTP request, including reading the body. |
+| `timeout` / `timeoutMs` | 15 seconds / 15,000 ms | Positive and finite. Applies per HTTP request, including reading the body. Writes with server-side enrichment and the first request through a gateway can take several seconds. |
 | `client` (Python) | a new `httpx.Client` / `httpx.AsyncClient` | A supplied client is not closed by the store. |
 | `fetch` (TypeScript) | `globalThis.fetch` | Injectable for tests. |
 

@@ -45,7 +45,7 @@ export class RestMemoryStore implements MemoryStore {
     this.baseUrl = parsed.toString().replace(/\/$/, "");
     this.apiKey = options.apiKey ?? "standalone";
     this.tenantId = options.tenantId;
-    this.timeoutMs = options.timeoutMs ?? 5000;
+    this.timeoutMs = options.timeoutMs ?? 15000;
     if (!this.apiKey.trim()) throw new TypeError("apiKey must be nonempty");
     if (this.tenantId !== undefined && !this.tenantId.trim()) {
       throw new TypeError("tenantId must be nonempty");

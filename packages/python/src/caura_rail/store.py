@@ -109,7 +109,7 @@ class _Config:
         base_url: str = "http://localhost:8000",
         api_key: str = "standalone",
         tenant_id: str | None = None,
-        timeout: float = 5.0,
+        timeout: float = 15.0,
     ) -> None:
         parsed = urlparse(base_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:

@@ -37,19 +37,37 @@ def main() -> None:
         print("tenant:", tenant)
 
         # 2. Governance rules land in the context, heaviest first.
+        # Rules are authored by an agent with trust level 2 or higher. On a
+        # standalone server the same key can act as any agent, so register the
+        # turn agent with one write and raise its trust. On multi-tenant Caura the
+        # gateway fixes the acting agent from the credential, so pass an
+        # agent-scoped key via CAURA_RULE_AUTHOR_KEY and its agent id via
+        # CAURA_RULE_AUTHOR_AGENT instead.
+        author_key = os.environ.get("CAURA_RULE_AUTHOR_KEY")
+        author = os.environ.get("CAURA_RULE_AUTHOR_AGENT", scope.agent_id)
         admin = httpx.Client(
             base_url=store.base_url,
             headers={
-                "X-API-Key": os.environ.get("CAURA_API_KEY", "standalone"),
+                "X-API-Key": author_key or os.environ.get("CAURA_API_KEY", "standalone"),
                 "X-Tenant-ID": tenant,
+                "X-Agent-ID": author,
             },
-            timeout=10,
+            timeout=30,
         )
         rules = [
             (f"rail-live-{run_id}-low", "low"),
             (f"rail-live-{run_id}-high", "high"),
         ]
         try:
+            if not author_key:
+                first = store.write(f"Rule author {run_id} joined fleet {FLEET}.", scope)
+                check(first.status == "written", f"could not register the rule author: {first}")
+                promoted = admin.patch(
+                    f"/api/v1/agents/{author}/trust",
+                    params={"tenant_id": tenant},
+                    json={"trust_level": 2},
+                )
+                print("rule author trust promotion: HTTP", promoted.status_code)
             for doc_id, weight in rules:
                 response = admin.post(
                     "/api/v1/keystones",
@@ -65,7 +83,7 @@ def main() -> None:
                 )
                 check(
                     response.is_success,
-                    f"keystone set failed: HTTP {response.status_code}",
+                    f"keystone set failed: HTTP {response.status_code} {response.text[:200]}",
                 )
             ctx = rail.recall("What are the rules?")
             check(not ctx.degraded, f"recall with rules degraded: {ctx.errors}")
