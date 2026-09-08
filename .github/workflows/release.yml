@@ -45,7 +45,7 @@ jobs:
       - run: npm test
       - run: python -m build packages/python
       - run: python -m twine check packages/python/dist/*
-      - run: npm pack --workspace @caura/rail --pack-destination dist-npm
+      - run: mkdir -p dist-npm && npm pack --workspace @caura/rail --pack-destination dist-npm
       - run: python contracts/smoke.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
