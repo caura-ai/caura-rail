@@ -361,12 +361,23 @@ trusted depends on the deployment:
   `PATCH /api/v1/agents/<agent_id>/trust?tenant_id=<tenant>` and body
   `{"trust_level": 2}`. Without the header, the standalone operator key is
   accepted as is.
-- **Managed and multi-tenant Caura**: the gateway derives the acting identity
-  from the credential and ignores a client-supplied `X-Agent-ID`. A tenant-scoped
-  key from an organization owner is accepted on current releases (verified on
-  caura.ai at server 3.10.1). If the server answers HTTP 403 with a message about
-  trust or an unregistered agent, author rules with an agent-scoped credential
-  issued for an agent at trust level 2 or higher, or in the Caura dashboard.
+- **Managed Caura**: the gateway derives the acting identity from the
+  credential and ignores a client-supplied `X-Agent-ID`, so a tenant-scoped
+  `mc_` key is refused with HTTP 403 and error code `AGENT_NOT_REGISTERED`.
+  Author rules with an agent-scoped credential instead. Your tenant key can mint
+  one in a single call, which also registers the agent at the trust level you
+  choose (see [Per-agent keys](https://caura.ai/docs/integrations/per-agent-keys/)):
+
+  ```bash
+  curl -X POST "https://caura.ai/api/v1/admin/agent-keys/provision" \
+    -H "X-API-Key: $CAURA_API_KEY" -H "Content-Type: application/json" \
+    -d '{"agent_id": "rule-author", "label": "rule author", "initial_trust": 2}'
+  # -> {"raw_key": "mc_...", "agent_id": "rule-author", ...}; the key is shown once
+  ```
+
+  Use that `raw_key` as `X-API-Key` on the keystone calls above; the same key
+  deletes the rules it created. Some long-standing tenants also accept the
+  tenant key for rule authoring; do not rely on that. The dashboard works too.
 
 Reading rules needs no special credential; every Rail scope receives them.
 After that, `rail.recall(...)` for any agent in fleet `ops` starts with
