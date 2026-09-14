@@ -148,7 +148,9 @@ Methods, all raising `StoreError` on backend failure:
 
 - `recall(query, scope, top_k=8)` → list of `Fact`. `POST /api/v1/search` with
   `tenant_id`, `query` (truncated to 5,000 characters), `caller_agent_id`,
-  `top_k` (1 to 20), and `fleet_ids` when the scope has a fleet.
+  `top_k` (1 to 20), and `fleet_ids` when the scope has a fleet. The server returns
+  the caller's own agent-private facts, team facts of the requested fleet, team
+  facts stored with no fleet, and organization-wide facts.
 - `keystones(scope)` → list of `KeystoneRule`. `GET /api/v1/keystones` with
   `tenant_id`, `agent_id`, and `fleet_id` when present. Accepts a bare array or an
   `items` envelope. A response flagged `X-Truncated: true` raises `StoreError`.

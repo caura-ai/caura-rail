@@ -253,6 +253,13 @@ with RestMemoryStore.from_env() as store:
 `rail.recall(query)` fetches context without running a turn and without touching
 the turn counters. It is the right call for a read-only lookup.
 
+**Team facts without a fleet are tenant-wide.** Rail always stores team-visible
+facts with the scope's fleet, but other clients, such as MCP agents with no home
+fleet, can store `scope_team` facts with no fleet at all. The server returns
+those to every agent in the tenant, whatever fleet it asks for. In a shared
+tenant, expect recall to include such facts alongside your fleet's own, and give
+your fleet's facts distinctive content so they rank on their own merits.
+
 ## Control what gets stored
 
 The extractor decides which facts a turn writes. It receives the user message and
@@ -345,15 +352,23 @@ curl -X DELETE "$CAURA_URL/api/v1/keystones/eu-residency?tenant_id=default&fleet
 `weight` is `low`, `med`, or `high`; `doc_id` is a lowercase slug and is the id
 you delete by. Replace `default` with your tenant on multi-tenant deployments.
 
-Rules are authored by an agent the server trusts. A standalone server lets any
-key act as any agent: add an `X-Agent-ID` header naming an agent that has
-written at least one memory, and raise that agent's trust to 2 with
-`PATCH /api/v1/agents/<agent_id>/trust?tenant_id=<tenant>` and body
-`{"trust_level": 2}` before creating rules. On managed and multi-tenant Caura
-the gateway decides the acting agent from the credential and ignores the
-header, so author rules with an agent-scoped credential issued for that agent
-(trust level 2 or higher), or in the Caura dashboard. Reading rules needs no
-special credential; every Rail scope receives them.
+Rules are authored by an identity the server trusts, and what counts as
+trusted depends on the deployment:
+
+- **Standalone server**: any key can act as any agent. Add an `X-Agent-ID`
+  header naming an agent that has written at least one memory, and raise that
+  agent's trust to 2 first with
+  `PATCH /api/v1/agents/<agent_id>/trust?tenant_id=<tenant>` and body
+  `{"trust_level": 2}`. Without the header, the standalone operator key is
+  accepted as is.
+- **Managed and multi-tenant Caura**: the gateway derives the acting identity
+  from the credential and ignores a client-supplied `X-Agent-ID`. A tenant-scoped
+  key from an organization owner is accepted on current releases (verified on
+  caura.ai at server 3.10.1). If the server answers HTTP 403 with a message about
+  trust or an unregistered agent, author rules with an agent-scoped credential
+  issued for an agent at trust level 2 or higher, or in the Caura dashboard.
+
+Reading rules needs no special credential; every Rail scope receives them.
 After that, `rail.recall(...)` for any agent in fleet `ops` starts with
 `### GOVERNANCE RULES` followed by `- Residency: Keep customer data in the EU.`
 
