@@ -111,16 +111,37 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
-      - name: Start Caura in standalone mode at the pinned release
+      - name: Select the matching backend image version
         working-directory: caura-server
+        shell: bash
         run: |
           # The compose file pulls ghcr :latest unless CAURA_VERSION names an
-          # image tag; :latest has lagged releases, so pin the image to the
+          # image tag, and :latest has lagged releases. Pin the image to the
           # same release as the checkout (tag backend-vX.Y.Z -> image vX.Y.Z).
-          export CAURA_VERSION="${CAURA_SERVER_REF#backend-}"
-          echo "server image tag: $CAURA_VERSION"
-          docker compose up -d --wait --quiet-pull
-          curl -s -H 'X-API-Key: standalone' http://localhost:8000/api/v1/status | python3 -c 'import sys,json; print("server version", json.load(sys.stdin).get("version"))'
+          if [[ ! "$CAURA_SERVER_REF" =~ ^backend-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::CAURA_SERVER_REF must be a backend-vX.Y.Z release tag"
+            exit 1
+          fi
+          version="${CAURA_SERVER_REF#backend-}"
+          echo "CAURA_VERSION=$version" >> "$GITHUB_ENV"
+          CAURA_VERSION="$version" docker compose config --images
+      - name: Start the selected Caura release in standalone mode
+        working-directory: caura-server
+        run: docker compose up -d --wait --wait-timeout 240 --quiet-pull --pull always --no-build
+      - name: Verify the running backend version
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          with urllib.request.urlopen("http://localhost:8000/api/v1/version", timeout=30) as response:
+              actual = json.load(response)["version"]
+          expected = os.environ["CAURA_VERSION"].removeprefix("v")
+          if actual.removeprefix("v") != expected:
+              raise SystemExit(f"Backend version mismatch: expected {expected}, got {actual}")
+          print(f"Verified running Caura backend {actual}")
+          PY
       - run: python -m pip install -e packages/python
       - run: npm ci --ignore-scripts && npm run build
       - name: Run live verification with both clients
@@ -135,6 +156,10 @@ jobs:
         if: failure()
         working-directory: caura-server
         run: docker compose logs --tail 200 core-api
+      - name: Remove disposable backend containers and data
+        if: always()
+        working-directory: caura-server
+        run: docker compose down --volumes --remove-orphans
 
   audit:
     name: Dependency audit
