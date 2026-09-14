@@ -84,9 +84,8 @@ required. Limits count Unicode code points, not tokens.
 
 Store timeout is seconds in Python and milliseconds in TypeScript, default 15
 seconds, applied per HTTP operation including reading the body, not to the whole
-turn. Redirects are
-not followed. Python closes HTTP clients it creates; a supplied httpx client
-remains owned by the caller. Async clients use `await store.aclose()` or an
+turn. Redirects are not followed. Python closes HTTP clients it creates; a
+supplied httpx client remains owned by the caller. Async clients use `await store.aclose()` or an
 async context manager. Node's native fetch owns its connection lifecycle.
 
 ## Concurrency
