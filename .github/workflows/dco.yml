@@ -1,0 +1,45 @@
+name: DCO
+
+# Every commit on a pull request must carry a `Signed-off-by:` trailer asserting
+# the Developer Certificate of Origin (https://developercertificate.org/), the
+# same lightweight alternative to a CLA the caura-ai/caura repository uses.
+# Branch protection on main requires this check.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Check DCO sign-off on every commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          FAILED=()
+          while IFS= read -r sha; do
+            if ! git log -1 --format=%B "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>$'; then
+              FAILED+=("$sha")
+            fi
+          done < <(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
+          if [ "${#FAILED[@]}" -ne 0 ]; then
+            echo "::error::Commits missing a Signed-off-by trailer:"
+            for sha in "${FAILED[@]}"; do echo "  $sha  $(git log -1 --format=%s "$sha")"; done
+            echo
+            echo "Fix the latest commit:  git commit --amend -s --no-edit && git push --force-with-lease"
+            echo "Fix several commits:    git rebase --signoff $BASE_SHA && git push --force-with-lease"
+            echo "Sign off by default:    git config --global format.signoff true"
+            exit 1
+          fi
+          echo "All commits signed off"

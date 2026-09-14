@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/caura-ai/caura-rail/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately as described in SECURITY.md.
+  - name: Caura server issues
+    url: https://github.com/caura-ai/caura/issues
+    about: Problems with the open-source server itself belong in the caura-ai/caura repository.

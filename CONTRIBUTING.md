@@ -35,6 +35,20 @@ python -m twine check packages/python/dist/*
 npm pack --workspace @caura/rail
 ```
 
+## Pull requests
+
+`main` is protected: changes arrive by pull request, need the `CI` and `DCO`
+checks green and one maintainer review, and merge with a linear history.
+Sign off every commit under the [Developer Certificate of Origin](https://developercertificate.org/):
+
+```bash
+git commit -s -m "fix: ..."          # adds Signed-off-by: Your Name <you@example.com>
+git config --global format.signoff true   # or make it the default
+```
+
+Dependabot opens weekly update PRs for pip, npm, and GitHub Actions; CodeQL
+scans every push and PR.
+
 ## Changing behavior
 
 - Keep the two packages equivalent. A behavior change lands in both, with tests in

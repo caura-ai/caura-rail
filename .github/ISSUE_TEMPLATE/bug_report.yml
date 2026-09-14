@@ -1,0 +1,31 @@
+name: Bug report
+description: Something in caura-rail or @caura/rail behaves differently from the documentation
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Package and version
+      placeholder: "caura-rail 1.0.0 / @caura/rail 1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Caura server
+      description: Managed caura.ai, or the open-source release (GET /api/v1/status reports `version`)
+      placeholder: "open-source 3.10.1, standalone mode"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include `turn.errors`, `turn.writes`, and any `StoreError` message. Do not include API keys or memory content you cannot share.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      render: python

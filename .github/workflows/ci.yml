@@ -135,3 +135,32 @@ jobs:
         if: failure()
         working-directory: caura-server
         run: docker compose logs --tail 200 core-api
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - run: python -m pip install pip-audit ./packages/python
+      - name: pip-audit the installed Python package and its dependencies
+        run: python -m pip_audit --desc
+      - run: npm ci --ignore-scripts
+      - name: npm audit (development dependencies; the package has no runtime dependencies)
+        run: npm audit --audit-level=high
+
+  ci:
+    # Single required status for branch protection; fails if any job above failed.
+    name: CI
+    if: always()
+    needs: [python, typescript, interoperability, live, audit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that every job succeeded
+        run: |
+          echo '${{ toJSON(needs) }}' | python3 -c 'import sys, json; r = json.load(sys.stdin); bad = [k for k, v in r.items() if v["result"] != "success"]; print("failed:", bad) if bad else print("all jobs succeeded"); sys.exit(1 if bad else 0)'
