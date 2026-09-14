@@ -1,5 +1,7 @@
 # Caura Rail for Python
 
+[![PyPI](https://img.shields.io/pypi/v/caura-rail?label=PyPI&color=0E6B5A)](https://pypi.org/project/caura-rail/) [![Python](https://img.shields.io/pypi/pyversions/caura-rail?label=Python)](https://pypi.org/project/caura-rail/) [![CI](https://img.shields.io/github/actions/workflow/status/caura-ai/caura-rail/ci.yml?label=CI)](https://github.com/caura-ai/caura-rail/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/caura-ai/caura-rail/blob/main/LICENSE)
+
 Memory operations around agent turns: fetch governance rules and relevant facts
 from [Caura](https://caura.ai) before your agent runs, then extract and store
 facts from the completed turn. Fully typed, synchronous and asynchronous.
