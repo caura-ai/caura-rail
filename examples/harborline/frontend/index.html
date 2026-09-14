@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harborline · Caura Rail demo</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <p class="brand">Harborline</p>
+        <h1>Support desk with shared memory</h1>
+        <p class="lede">
+          Two assistants — TypeScript intake and a Python specialist — share a
+          Caura fleet through Rail. Each turn shows the context Rail recalled,
+          the reply, and what happened to every extracted fact.
+        </p>
+        <div class="meta" id="meta">Loading…</div>
+      </header>
+
+      <section class="controls">
+        <button type="button" id="bootstrapBtn">Start new fleet</button>
+        <button type="button" id="cleanupBtn" class="ghost">Cleanup keystone</button>
+        <label class="agent-pick">
+          Agent
+          <select id="agent">
+            <option value="intake">Intake (TypeScript Rail)</option>
+            <option value="specialist">Specialist (Python AsyncRail)</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="composer">
+        <textarea
+          id="message"
+          rows="4"
+          placeholder="Example: Remember: Acme settles in USD via ACH. Customer note: Acme's on-call pager is #ops-acme."
+        ></textarea>
+        <button type="button" id="sendBtn">Run turn</button>
+      </section>
+
+      <section class="turns" id="turns" aria-live="polite"></section>
+    </div>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>

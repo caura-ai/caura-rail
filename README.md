@@ -184,6 +184,7 @@ anything else, or return an empty list to make Rail recall-only.
 | [API reference](docs/api.md) | Every class, option, return value, and error, in both languages. |
 | [Reliability](docs/reliability.md) | Failure classification, outbox and replay semantics, server limits, concurrency. |
 | [Contract tests](contracts/README.md) | How both packages are verified against the Caura HTTP contract and against live servers. |
+| [Harborline example](examples/harborline/) | A complete application: a web UI, a Python service and a TypeScript service sharing one fleet, running against the open-source server or caura.ai by configuration. |
 | [Changelog](CHANGELOG.md) &middot; [Security](SECURITY.md) &middot; [Contributing](CONTRIBUTING.md) | |
 
 ## Compatibility

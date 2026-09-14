@@ -5,6 +5,10 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+- `examples/harborline`: a complete demo application (FastAPI + TypeScript
+  intake service + web UI) built from the public documentation and verified
+  against the open-source server and caura.ai.
+
 ## 1.0.1 - 2026-09-14
 
 No behaviour changes to the libraries.

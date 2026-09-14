@@ -1,0 +1,20 @@
+{
+  "name": "harborline-intake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript intake agent for the Harborline Rail demo",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@caura/rail": "1.0.1",
+    "@types/node": "24.3.0",
+    "tsx": "4.20.3",
+    "typescript": "5.9.2"
+  }
+}

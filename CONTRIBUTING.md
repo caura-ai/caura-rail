@@ -13,7 +13,7 @@ Run everything CI runs:
 
 ```bash
 python -m ruff check . && python -m ruff format --check .
-python -m mypy --config-file packages/python/pyproject.toml packages/python/src/caura_rail examples contracts
+python -m mypy --config-file packages/python/pyproject.toml packages/python/src/caura_rail examples/fleet.py contracts
 python -m pytest packages/python/tests -q
 npm test
 python contracts/smoke.py
