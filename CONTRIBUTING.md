@@ -61,7 +61,16 @@ npm pack --workspace @caura/rail
 3. Trigger the workflow manually with `dry_run` enabled to rehearse without
    publishing.
 
-Publishing requires two repository secrets: `PYPI_API_TOKEN` (a PyPI API token
-allowed to create and upload `caura-rail`) and `NPM_TOKEN` (an npm token with
-publish rights to the `@caura` scope). Both packages are published with the
-release workflow only, never from a laptop.
+Publishing needs the `PYPI_API_TOKEN` repository secret (a PyPI API token
+allowed to create and upload `caura-rail`) and, on npmjs.com, a trusted
+publisher entry on `@caura/rail` naming this repository, `release.yml`, and the
+`release` environment. No npm token is stored. The very first npm publish of a
+new package has to be done once by hand, because npm only lets you add a
+trusted publisher to a package that already exists:
+
+```bash
+cd packages/typescript && npm ci && npm publish --access public --provenance=false
+```
+
+The workflow skips the npm step when the tagged version is already on npm, so
+that first release still completes the PyPI publish and the GitHub release.

@@ -84,10 +84,18 @@ jobs:
         with:
           packages-dir: packages/python/dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
-      - name: Publish to npm with provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish dist-npm/caura-rail-*.tgz --access public --provenance
+      - name: Publish to npm with provenance (trusted publishing, no token)
+        shell: bash
+        run: |
+          # npm >= 11.5 exchanges the job's OIDC token for publish rights when the
+          # package lists this repository and workflow as a trusted publisher.
+          npm install -g npm@latest
+          npm --version
+          if npm view "@caura/rail@${{ needs.build.outputs.version }}" version >/dev/null 2>&1; then
+            echo "@caura/rail@${{ needs.build.outputs.version }} is already on npm; skipping"
+          else
+            npm publish dist-npm/caura-rail-*.tgz --access public --provenance
+          fi
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
