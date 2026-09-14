@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "caura-rail"
-version = "1.0.0"
+version = "1.0.1"
 description = "Memory operations around every agent turn, for managed and self-hosted Caura."
 readme = "README.md"
 requires-python = ">=3.10"
