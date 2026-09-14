@@ -153,7 +153,8 @@ Methods, all raising `StoreError` on backend failure:
   facts stored with no fleet, and organization-wide facts.
 - `keystones(scope)` → list of `KeystoneRule`. `GET /api/v1/keystones` with
   `tenant_id`, `agent_id`, and `fleet_id` when present. Accepts a bare array or an
-  `items` envelope. A response flagged `X-Truncated: true` raises `StoreError`.
+  `items` envelope. Any response flagged `X-Truncated: true` raises `StoreError`;
+  in practice only the keystones endpoint sets that header.
 - `write(fact, scope)` → `WriteResult`. `POST /api/v1/memories` with `tenant_id`,
   `agent_id`, `content`, `visibility`, `write_mode: "strong"`, and `fleet_id`
   when present. Returns `written` with the new id, or `deduplicated` with the
@@ -247,5 +248,6 @@ exports `MAX_TOP_K` and `MAX_QUERY_CHARS`. Python also exposes `__version__`.
 `StoreError` messages produced by the REST stores: `Caura request failed (HTTP <code>)`,
 `Caura transport failure`, `Duplicate winner no longer live`,
 `Backend returned truncated governance rules`, `Scope tenant does not match the
-store tenant`, `Governance rules exceed the context budget`, and
-`Invalid backend response: ...` variants.
+store tenant`, `Governance rules exceed the context budget`, and the response
+validation messages `Invalid backend response: ...`, `Invalid search response:
+missing items array`, and `Invalid keystone response: ...`.
