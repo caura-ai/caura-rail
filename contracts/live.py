@@ -1,8 +1,9 @@
 """Verify both installed clients against a real Caura backend.
 
 Requires CAURA_URL and CAURA_API_KEY (and CAURA_TENANT unless the backend
-supports identity discovery). Creates and deletes two governance rules and
-writes a few uniquely marked memories in fleet "rail-live".
+supports identity discovery). Every run uses its own fleet, "rail-live-<id>",
+so repeated runs never compete in recall; it creates and deletes two tenant-wide
+governance rules and writes a few uniquely marked memories.
 """
 
 import os
@@ -13,8 +14,6 @@ from pathlib import Path
 import httpx
 from caura_rail import MemoryScope, Rail, RestMemoryStore, StoreError, Visibility
 
-FLEET = "rail-live"
-
 
 def check(condition: bool, message: str) -> None:
     if not condition:
@@ -23,9 +22,10 @@ def check(condition: bool, message: str) -> None:
 
 def main() -> None:
     run_id = uuid.uuid4().hex[:8]
+    fleet = f"rail-live-{run_id}"
     marker = f"Rail live check {run_id}"
     scope = MemoryScope(
-        agent_id=f"rail-live-py-{run_id}", fleet_id=FLEET, visibility=Visibility.TEAM
+        agent_id=f"rail-live-py-{run_id}", fleet_id=fleet, visibility=Visibility.TEAM
     )
     with RestMemoryStore.from_env() as store:
         rail = Rail(store, scope)
@@ -60,7 +60,7 @@ def main() -> None:
         ]
         try:
             if not author_key:
-                first = store.write(f"Rule author {run_id} joined fleet {FLEET}.", scope)
+                first = store.write(f"Rule author {run_id} joined fleet {fleet}.", scope)
                 check(first.status == "written", f"could not register the rule author: {first}")
                 promoted = admin.patch(
                     f"/api/v1/agents/{author}/trust",
@@ -73,11 +73,10 @@ def main() -> None:
                     "/api/v1/keystones",
                     json={
                         "tenant_id": tenant,
-                        "fleet_id": FLEET,
                         "doc_id": doc_id,
                         "title": f"Rule {weight} {run_id}",
                         "content": f"Live check rule with {weight} weight.",
-                        "scope": "fleet",
+                        "scope": "tenant",
                         "weight": weight,
                     },
                 )
@@ -145,6 +144,7 @@ def main() -> None:
                     str(Path(__file__).with_name("live_peer.mjs")),
                     marker,
                     scope.agent_id.replace("-py-", "-ts-"),
+                    fleet,
                 ],
                 check=True,
                 timeout=60,
@@ -159,7 +159,7 @@ def main() -> None:
             for doc_id, _ in rules:
                 admin.delete(
                     f"/api/v1/keystones/{doc_id}",
-                    params={"tenant_id": tenant, "fleet_id": FLEET},
+                    params={"tenant_id": tenant},
                 )
             admin.close()
     print("Live verification passed against", store.base_url)

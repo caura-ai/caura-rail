@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { MemoryScope, Rail, RestMemoryStore } from "@caura/rail";
 
-const [marker, agentId] = process.argv.slice(2);
+const [marker, agentId, fleetId] = process.argv.slice(2);
 const runId = marker.split(" ").at(-1);
 const store = RestMemoryStore.fromEnv(process.env);
-const scope = new MemoryScope({ agentId, fleetId: "rail-live", visibility: "scope_team" });
+const scope = new MemoryScope({ agentId, fleetId, visibility: "scope_team" });
 const rail = new Rail({ store, scope });
 const turn = await rail.turn(`Remember: TypeScript live check ${runId} recorded.`, (_, ctx) => {
   assert.equal(ctx.degraded, false, ctx.errors.join("; "));
