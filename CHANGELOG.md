@@ -5,6 +5,10 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+- Documented the minimum open-source server release, backend-v2.47.0, and the
+  `CAURA_VERSION` pin; the live CI job now runs the pinned release instead of
+  the `latest` image.
+
 ## 1.0.0 - 2026-09-08
 
 First stable release.

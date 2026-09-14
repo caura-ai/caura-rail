@@ -111,9 +111,16 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
-      - name: Start Caura in standalone mode
+      - name: Start Caura in standalone mode at the pinned release
         working-directory: caura-server
-        run: docker compose up -d --wait --quiet-pull
+        run: |
+          # The compose file pulls ghcr :latest unless CAURA_VERSION names an
+          # image tag; :latest has lagged releases, so pin the image to the
+          # same release as the checkout (tag backend-vX.Y.Z -> image vX.Y.Z).
+          export CAURA_VERSION="${CAURA_SERVER_REF#backend-}"
+          echo "server image tag: $CAURA_VERSION"
+          docker compose up -d --wait --quiet-pull
+          curl -s -H 'X-API-Key: standalone' http://localhost:8000/api/v1/status | python3 -c 'import sys,json; print("server version", json.load(sys.stdin).get("version"))'
       - run: python -m pip install -e packages/python
       - run: npm ci --ignore-scripts && npm run build
       - name: Run live verification with both clients

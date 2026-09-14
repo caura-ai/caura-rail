@@ -90,15 +90,20 @@ create `.env` next to the compose file before starting:
 
 ```bash
 cat > .env <<'EOF'
+CAURA_VERSION=v3.10.1
 EMBEDDING_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 EOF
 docker compose up -d --wait
 ```
 
-The server's `.env.example` lists the alternatives, including a local
-open-source embedding model behind the `embed-local` compose profile. Managed
-Caura always uses real embeddings.
+`CAURA_VERSION` pins the server image to a release. Rail needs open-source
+release backend-v2.47.0 or later: earlier servers ignore the caller identity
+Rail asserts on search, so an agent cannot recall its own agent-private facts.
+The `latest` image tag is not guaranteed to be current, so always pin. The
+server's `.env.example` lists the embedding alternatives, including a local
+open-source model behind the `embed-local` compose profile. Managed Caura
+always uses real embeddings and needs no version pin.
 
 ## Your first turn
 
