@@ -14,6 +14,9 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    groups:
+      npm-dev-minor-patch:
+        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -21,3 +24,8 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    groups:
+      # init and analyze must move together, and the other actions are safest
+      # reviewed as one bump.
+      github-actions:
+        patterns: ["*"]
