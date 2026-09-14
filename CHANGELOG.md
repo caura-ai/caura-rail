@@ -5,9 +5,22 @@ packages share version numbers and release together.
 
 ## Unreleased
 
-- Documented the minimum open-source server release, backend-v2.47.0, and the
-  `CAURA_VERSION` pin; the live CI job now runs the pinned release instead of
-  the `latest` image.
+## 1.0.1 - 2026-09-14
+
+No behaviour changes to the libraries.
+
+- Documented the minimum open-source server release, backend-v2.47.0, in which
+  search honours the caller identity Rail asserts so agents recall their own
+  private facts, and the `CAURA_VERSION` pin for self-hosted servers.
+- Documented the fleet-scope policy (an agent belongs to the fleet of its first
+  write), semantic deduplication, rule authoring on multi-tenant Caura, and the
+  gateway warm-up on first identity resolution.
+- README restyled; package READMEs gain badges and drop the client comparison.
+- Live CI job runs the pinned server release instead of the `latest` image and
+  verifies the running version. The docs harness runs JavaScript blocks and has
+  a `--live` mode against a real backend.
+- Repository governance: protected `main`, DCO and CodeQL workflows, dependency
+  audit, Dependabot, PR and issue templates.
 
 ## 1.0.0 - 2026-09-08
 
