@@ -32,19 +32,11 @@
 
 ## Why Rail
 
-Caura is shared, governed memory for fleets of AI agents. Its REST clients,
-`caura-client` and `@caura/client`, call that API one request at a time. Rail
-sits one level up: it wraps each **turn** of an agent you write yourself.
-
-| | Thin client (`caura-client`, `@caura/client`) | Rail (`caura-rail`, `@caura/rail`) |
-|---|---|---|
-| You want to | call a Caura endpoint | give an agent memory it uses on every turn |
-| Rules | fetch them yourself | fetched first and placed ahead of facts, every turn |
-| Facts | search and write yourself | recalled before the agent runs, extracted and written after |
-| Failures | your code decides | classified: `written`, `deduplicated`, `deferred` with replay, `rejected` |
-| Languages | Python, TypeScript | Python (sync and async), TypeScript |
-
-> **Use a client to call the API; use Rail to give an agent memory around every turn.**
+Caura is shared, governed memory for fleets of AI agents. Rail wraps each turn of
+an agent you write yourself: rules and relevant facts in before the model runs,
+what the turn taught out afterwards, with every write classified so your code can
+tell `written` from `deferred` from `rejected`. Caura also publishes thin REST
+clients, `caura-client` and `@caura/client`, for calling the API directly.
 
 Rail 1.0 is a stable release. Both packages carry the same semantics, are tested
 against the same HTTP contract, and are exercised against a running Caura server
