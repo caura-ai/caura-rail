@@ -68,7 +68,7 @@ you want to pin one.
 
 ### Self-hosted Caura
 
-Follow the [Caura self-hosting guide](https://github.com/caura-ai/caura#quickstart).
+Follow the [Caura self-hosting guide](https://caura.ai/docs/getting-started/self-host).
 The short version:
 
 ```bash

@@ -18,9 +18,12 @@ with RestMemoryStore.from_env() as store:  # CAURA_URL, CAURA_API_KEY
     print(turn.reply, [w.status for w in turn.writes])
 ```
 
+Prefer the thin `caura-client` package when you only need to call the API; Rail
+adds the turn lifecycle, governance ordering, extraction, and replay on top.
+
 Full documentation, including the guide, API reference, and reliability
 semantics, lives in the
-[repository](https://github.com/caura-ai/caura-rail-next#readme).
+[repository](https://github.com/caura-ai/caura-rail#readme).
 A TypeScript package with the same semantics is published as `@caura/rail`.
 
 Licensed under Apache-2.0.

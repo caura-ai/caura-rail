@@ -56,12 +56,12 @@ npm pack --workspace @caura/rail
    `packages/typescript/package.json`, move the Unreleased changelog entries under
    that version with the date, and merge to `main`.
 2. Tag the merge commit `vX.Y.Z` and push the tag. The release workflow rebuilds,
-   re-runs the test suites and the contract check, publishes to PyPI through
-   trusted publishing and to npm with provenance, and creates a GitHub release
-   with the artifacts attached.
+   re-runs the test suites and the contract check, publishes to PyPI and to npm
+   with provenance, and creates a GitHub release with the artifacts attached.
 3. Trigger the workflow manually with `dry_run` enabled to rehearse without
    publishing.
 
-Publishing requires a PyPI trusted-publisher entry for this repository's
-`release.yml` workflow and an `NPM_TOKEN` repository secret with publish rights
-to `@caura/rail`.
+Publishing requires two repository secrets: `PYPI_API_TOKEN` (a PyPI API token
+allowed to create and upload `caura-rail`) and `NPM_TOKEN` (an npm token with
+publish rights to the `@caura` scope). Both packages are published with the
+release workflow only, never from a laptop.

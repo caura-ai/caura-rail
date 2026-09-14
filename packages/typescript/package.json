@@ -10,14 +10,14 @@
     "recall",
     "governance"
   ],
-  "homepage": "https://github.com/caura-ai/caura-rail-next#readme",
+  "homepage": "https://github.com/caura-ai/caura-rail#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/caura-ai/caura-rail-next.git",
+    "url": "git+https://github.com/caura-ai/caura-rail.git",
     "directory": "packages/typescript"
   },
   "bugs": {
-    "url": "https://github.com/caura-ai/caura-rail-next/issues"
+    "url": "https://github.com/caura-ai/caura-rail/issues"
   },
   "license": "Apache-2.0",
   "type": "module",

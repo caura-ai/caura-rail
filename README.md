@@ -11,6 +11,10 @@ what was recalled, written, deferred, or rejected.
 Rail is a stable 1.0 release. Both packages carry the same semantics and are
 tested against the same HTTP contract and against a running Caura server.
 
+Caura also publishes `caura-client` and `@caura/client`, thin clients for the
+REST API. Use a client to call the API; use Rail to give an agent memory around
+every turn.
+
 ## Install
 
 Python 3.10 or newer:
@@ -140,7 +144,7 @@ anything else, or return an empty list to make Rail recall-only.
 |---|---|
 | Python | 3.10, 3.11, 3.12, 3.13, 3.14 |
 | Node.js | 22, 24 |
-| Caura server | Open-source release backend-v2.47.5 and the REST contract it documents |
+| Caura server | Managed Caura, and open-source release backend-v2.47.5 or later |
 | Embeddings | Recall quality depends on the server's embedding provider. The open-source quick start ships a placeholder embedder; see [Self-hosted Caura](docs/guide.md#self-hosted-caura). |
 
 Every code block in this README and in `docs/` is executed and type-checked in CI.

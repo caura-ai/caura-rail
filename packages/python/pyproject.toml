@@ -28,11 +28,11 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/caura-ai/caura-rail-next"
-Documentation = "https://github.com/caura-ai/caura-rail-next/tree/main/docs"
-Repository = "https://github.com/caura-ai/caura-rail-next"
-Changelog = "https://github.com/caura-ai/caura-rail-next/blob/main/CHANGELOG.md"
-Issues = "https://github.com/caura-ai/caura-rail-next/issues"
+Homepage = "https://github.com/caura-ai/caura-rail"
+Documentation = "https://github.com/caura-ai/caura-rail/tree/main/docs"
+Repository = "https://github.com/caura-ai/caura-rail"
+Changelog = "https://github.com/caura-ai/caura-rail/blob/main/CHANGELOG.md"
+Issues = "https://github.com/caura-ai/caura-rail/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.11", "mypy>=1.14", "build>=1.2", "twine>=6"]
