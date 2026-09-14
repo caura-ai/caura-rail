@@ -84,6 +84,7 @@ jobs:
         with:
           packages-dir: packages/python/dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
       - name: Publish to npm with provenance
         shell: bash
         env:
@@ -97,11 +98,13 @@ jobs:
           if npm view "@caura/rail@${{ needs.build.outputs.version }}" version >/dev/null 2>&1; then
             echo "@caura/rail@${{ needs.build.outputs.version }} is already on npm; skipping"
           else
-            npm publish dist-npm/caura-rail-*.tgz --access public --provenance
+            # The leading ./ matters: a bare "dir/file.tgz" is parsed as a GitHub shorthand.
+            npm publish ./dist-npm/caura-rail-*.tgz --access public --provenance
           fi
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release view "v${{ needs.build.outputs.version }}" >/dev/null 2>&1 && exit 0
           gh release create "v${{ needs.build.outputs.version }}" packages/python/dist/* dist-npm/*.tgz \
             --title "v${{ needs.build.outputs.version }}" --notes-file <(awk '/^## /{n++} n==2' CHANGELOG.md)
