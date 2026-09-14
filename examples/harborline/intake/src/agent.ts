@@ -50,7 +50,7 @@ export type TurnPayload = {
     degraded: boolean;
     errors: string[];
     keystones: Array<{ docId: string; title: string; content: string; weight: number }>;
-    facts: Array<{ id: string; content: string; agentId: string }>;
+    facts: Array<{ id: string; content: string; agentId?: string }>;
   };
   writes: Array<{ status: string; id?: string | null; error?: string | null }>;
   telemetry: {

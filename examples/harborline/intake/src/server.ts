@@ -48,8 +48,9 @@ const server = http.createServer(async (req, res) => {
     }
     send(res, 404, { error: "not found" });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    send(res, 500, { error: message });
+    // Log the detail server-side; error messages can carry internal information.
+    console.error("Unhandled error in intake server", err);
+    send(res, 500, { error: "internal server error" });
   }
 });
 
