@@ -144,6 +144,15 @@ TypeScript: `new RestMemoryStore({ baseUrl?, apiKey?, tenantId?, timeoutMs?, fet
 `from_env(**overrides)` / `fromEnv(env, overrides?)` read `CAURA_URL`,
 `CAURA_API_KEY`, and `CAURA_TENANT` and apply any overrides.
 
+Every request carries `X-API-Key`, `X-Tenant-ID` once the tenant is known,
+`Content-Type: application/json` on requests with a body, and a `User-Agent`
+naming the SDK: `caura-rail-python/<version> (python/<major>.<minor>)` or
+`caura-rail-node/<version> (node/<major>)`. The `User-Agent` exists so a Caura
+server can count which SDK families talk to it. It names only the package, its
+version and the runtime; nothing else identifies the caller, and the store
+never contacts any host other than `base_url`. The Python constant is
+`caura_rail.store.USER_AGENT`; TypeScript exports `USER_AGENT` and `VERSION`.
+
 Methods, all raising `StoreError` on backend failure:
 
 - `recall(query, scope, top_k=8)` → list of `Fact`. `POST /api/v1/search` with

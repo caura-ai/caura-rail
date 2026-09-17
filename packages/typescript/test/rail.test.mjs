@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { MemoryScope, Outbox, Rail, RestMemoryStore, StoreError } from "../dist/index.js";
+import {
+  MemoryScope, Outbox, Rail, RestMemoryStore, StoreError, USER_AGENT, VERSION,
+} from "../dist/index.js";
 
 const contract = JSON.parse(await readFile(new URL("../../../contracts/caura.json", import.meta.url)));
 const scope = new MemoryScope({ agentId: "support-1", fleetId: "support", visibility: "scope_team" });
@@ -14,6 +16,7 @@ test("shared contract: discovery, scoped requests, nested rules, write and dupli
     const parsed = new URL(url);
     paths.push(parsed.pathname);
     assert.equal(init.headers["X-API-Key"], "test-key");
+    assert.equal(init.headers["User-Agent"], USER_AGENT);
     if (parsed.pathname === "/api/v1/whoami") return json(contract.identity);
     assert.equal(init.headers["X-Tenant-ID"], contract.tenant);
     if (parsed.pathname === "/api/v1/keystones") {
@@ -42,6 +45,16 @@ test("shared contract: discovery, scoped requests, nested rules, write and dupli
   assert.equal(turn.writes[0].status, "written");
   assert.equal((await store.write(contract.fact, scope)).status, "deduplicated");
   assert.equal(paths.filter(p => p === "/api/v1/whoami").length, 1);
+});
+
+test("VERSION agrees with package.json", async () => {
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url)));
+  assert.equal(VERSION, pkg.version);
+});
+
+test("User-Agent names the SDK and nothing else", () => {
+  assert.equal(USER_AGENT, `caura-rail-node/${VERSION} (node/${process.versions.node.split(".")[0]})`);
+  assert.match(USER_AGENT, /^caura-rail-node\/\d+\.\d+\.\d+ \(node\/\d+\)$/);
 });
 
 for (const status of [401, 403, 404, 422, 429, 503]) {

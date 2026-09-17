@@ -5,6 +5,12 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+- Both stores send a `User-Agent` header naming the SDK, its version and the
+  runtime (`caura-rail-python/<version> (python/<major>.<minor>)`,
+  `caura-rail-node/<version> (node/<major>)`) so a Caura server can count
+  which SDK families talk to it. Nothing else is added to any request and no
+  request goes anywhere new. `@caura/rail` exports `VERSION` and `USER_AGENT`;
+  the Python constant is `caura_rail.store.USER_AGENT`.
 - PyPI page: the `caura-rail` README now opens with the shared Caura header
   block (what Caura is, formerly MemClaw), states the Rail guarantee
   (deterministic invocation of recall and commit, fail-open, not persistence),
