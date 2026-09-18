@@ -5,6 +5,13 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+- PyPI page: the `caura-rail` README now opens with the shared Caura header
+  block (what Caura is, formerly MemClaw), states the Rail guarantee
+  (deterministic invocation of recall and commit, fail-open, not persistence),
+  marks Rail as preview, and links caura.ai, the docs, the changelog and the
+  LongMemEval benchmark harness. Package metadata on PyPI and npm: summary
+  starts with "Caura", shared keyword set, `Development Status :: 4 - Beta`,
+  Homepage points at caura.ai and a Benchmark URL is added. No code changes.
 - `examples/harborline`: a complete demo application (FastAPI + TypeScript
   intake service + web UI) built from the public documentation and verified
   against the open-source server and caura.ai.
