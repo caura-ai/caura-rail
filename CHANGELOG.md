@@ -5,6 +5,10 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+- `contracts/fixture.py` runs standalone on Windows: the idle wait no longer
+  uses `signal.pause()`, which does not exist there and made `mypy` report an
+  error for Windows contributors. CI now also type-checks against the Windows
+  standard library.
 - Both stores send a `User-Agent` header naming the SDK, its version and the
   runtime (`caura-rail-python/<version> (python/<major>.<minor>)`,
   `caura-rail-node/<version> (node/<major>)`) so a Caura server can count
