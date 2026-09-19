@@ -1,14 +1,21 @@
 {
   "name": "@caura/rail",
   "version": "1.0.1",
-  "description": "Memory operations around every agent turn, for managed and self-hosted Caura.",
+  "description": "Caura Rail (preview): deterministic recall and commit around every agent turn, for Caura (formerly MemClaw) governed shared memory.",
   "keywords": [
     "caura",
-    "memory",
-    "agents",
-    "llm",
+    "caura rail",
+    "agent memory",
+    "ai agent memory",
+    "shared memory",
+    "multi-agent",
+    "agent db",
+    "agent fleet memory",
+    "mcp",
+    "governed memory",
+    "llm memory",
     "recall",
-    "governance"
+    "memclaw"
   ],
   "homepage": "https://github.com/caura-ai/caura-rail#readme",
   "repository": {
