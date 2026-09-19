@@ -1,6 +1,9 @@
 import {
   type Fact, type KeystoneRule, type MemoryStore, MemoryScope, StoreError, type WriteResult,
 } from "./models.js";
+import { VERSION } from "./version.js";
+
+export { VERSION };
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -20,6 +23,18 @@ function string(value: unknown): string {
 export const MAX_TOP_K = 20;
 /** Longest query the Caura search endpoint accepts; longer queries are truncated. */
 export const MAX_QUERY_CHARS = 5000;
+
+function runtimeTag(): string {
+  const node = (globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node;
+  return node ? ` (node/${node.split(".")[0]})` : "";
+}
+
+/**
+ * Sent on every request so a server can tell SDK families apart. Names the
+ * package, its version and, under Node, the Node major; nothing else. Browsers
+ * drop a caller-supplied User-Agent, which is fine.
+ */
+export const USER_AGENT = `caura-rail-node/${VERSION}${runtimeTag()}`;
 
 export interface StoreOptions {
   baseUrl?: string;
@@ -72,7 +87,7 @@ export class RestMemoryStore implements MemoryStore {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const headers: Record<string, string> = { "X-API-Key": this.apiKey };
+      const headers: Record<string, string> = { "X-API-Key": this.apiKey, "User-Agent": USER_AGENT };
       if (tenant) headers["X-Tenant-ID"] = tenant;
       if (body) headers["Content-Type"] = "application/json";
       const response = await this.fetchImpl(this.baseUrl + path, {

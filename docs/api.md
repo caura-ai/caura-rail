@@ -144,6 +144,15 @@ TypeScript: `new RestMemoryStore({ baseUrl?, apiKey?, tenantId?, timeoutMs?, fet
 `from_env(**overrides)` / `fromEnv(env, overrides?)` read `CAURA_URL`,
 `CAURA_API_KEY`, and `CAURA_TENANT` and apply any overrides.
 
+Every request carries `X-API-Key`, `X-Tenant-ID` once the tenant is known,
+`Content-Type: application/json` on requests with a body, and a `User-Agent`
+naming the SDK: `caura-rail-python/<version> (python/<major>.<minor>)` or
+`caura-rail-node/<version> (node/<major>)`. The `User-Agent` exists so a Caura
+server can count which SDK families talk to it. It names only the package, its
+version and the runtime; nothing else identifies the caller, and the store
+never contacts any host other than `base_url`. The Python constant is
+`caura_rail.store.USER_AGENT`; TypeScript exports `USER_AGENT` and `VERSION`.
+
 Methods, all raising `StoreError` on backend failure:
 
 - `recall(query, scope, top_k=8)` → list of `Fact`. `POST /api/v1/search` with
@@ -153,7 +162,8 @@ Methods, all raising `StoreError` on backend failure:
   facts stored with no fleet, and organization-wide facts.
 - `keystones(scope)` → list of `KeystoneRule`. `GET /api/v1/keystones` with
   `tenant_id`, `agent_id`, and `fleet_id` when present. Accepts a bare array or an
-  `items` envelope. A response flagged `X-Truncated: true` raises `StoreError`.
+  `items` envelope. Any response flagged `X-Truncated: true` raises `StoreError`;
+  in practice only the keystones endpoint sets that header.
 - `write(fact, scope)` → `WriteResult`. `POST /api/v1/memories` with `tenant_id`,
   `agent_id`, `content`, `visibility`, `write_mode: "strong"`, and `fleet_id`
   when present. Returns `written` with the new id, or `deduplicated` with the
@@ -247,5 +257,6 @@ exports `MAX_TOP_K` and `MAX_QUERY_CHARS`. Python also exposes `__version__`.
 `StoreError` messages produced by the REST stores: `Caura request failed (HTTP <code>)`,
 `Caura transport failure`, `Duplicate winner no longer live`,
 `Backend returned truncated governance rules`, `Scope tenant does not match the
-store tenant`, `Governance rules exceed the context budget`, and
-`Invalid backend response: ...` variants.
+store tenant`, `Governance rules exceed the context budget`, and the response
+validation messages `Invalid backend response: ...`, `Invalid search response:
+missing items array`, and `Invalid keystone response: ...`.

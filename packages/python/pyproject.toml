@@ -5,16 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "caura-rail"
 version = "1.0.1"
-description = "Memory operations around every agent turn, for managed and self-hosted Caura."
+description = "Caura Rail (preview): deterministic recall and commit around every agent turn, for Caura (formerly MemClaw) governed shared memory."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Caura" }]
 dependencies = ["httpx>=0.27,<1"]
-keywords = ["caura", "memory", "agents", "llm", "recall", "governance"]
+keywords = ["caura", "caura rail", "agent memory", "ai agent memory", "shared memory", "multi-agent", "agent db", "agent fleet memory", "mcp", "governed memory", "llm memory", "recall", "memclaw"]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -23,16 +23,18 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Libraries",
   "Typing :: Typed",
 ]
 
 [project.urls]
-Homepage = "https://github.com/caura-ai/caura-rail"
+Homepage = "https://caura.ai"
 Documentation = "https://github.com/caura-ai/caura-rail/tree/main/docs"
-Repository = "https://github.com/caura-ai/caura-rail"
-Changelog = "https://github.com/caura-ai/caura-rail/blob/main/CHANGELOG.md"
+Source = "https://github.com/caura-ai/caura-rail"
 Issues = "https://github.com/caura-ai/caura-rail/issues"
+Changelog = "https://github.com/caura-ai/caura-rail/blob/main/CHANGELOG.md"
+Benchmark = "https://github.com/caura-ai/caura-longmemeval"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.11", "mypy>=1.14", "build>=1.2", "twine>=6"]

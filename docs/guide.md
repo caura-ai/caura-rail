@@ -22,13 +22,16 @@ npm install @caura/rail              # Node.js 22+
 
 ## Connect a backend
 
-Rail talks to the Caura REST API with an API key header and a tenant header. The
-`from_env` / `fromEnv` constructors read:
+Rail talks to the Caura REST API with an API key header, a tenant header and a
+`User-Agent` that names the SDK and its version (`caura-rail-python/1.0.1
+(python/3.12)`, `caura-rail-node/1.0.1 (node/22)`), so a server can count which
+SDK families talk to it; see [api.md](api.md#restmemorystore-and-asyncrestmemorystore)
+for the exact strings. The `from_env` / `fromEnv` constructors read:
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `CAURA_URL` | Yes | Base URL of the API. `https://caura.ai` for managed Caura. Defaults to `http://localhost:8000`. |
-| `CAURA_API_KEY` | Yes | Sent as `X-API-Key`. Defaults to `standalone`. |
+| `CAURA_URL` | For anything but a local standalone server | Base URL of the API. `https://caura.ai` for managed Caura. Defaults to `http://localhost:8000`. |
+| `CAURA_API_KEY` | For anything but a standalone server | Sent as `X-API-Key`. Defaults to `standalone`, which any standalone server accepts. |
 | `CAURA_TENANT` | No | Sent as `X-Tenant-ID` and in request bodies. When unset, Rail calls `GET /api/v1/whoami` once and uses the tenant the server reports for the key. |
 
 Rail reads the environment only when you construct a store. It never loads `.env`
@@ -568,9 +571,11 @@ The repository ships two verification programs:
 - `contracts/smoke.py` runs both packages against a local fixture that mirrors
   the Caura REST contract. It needs no account and writes nothing real.
 - `contracts/live.py` runs both packages against a real backend named by the
-  environment variables above. It creates and removes two rules in fleet
-  `rail-live` and writes a few uniquely marked facts. CI runs it against the
-  open-source Caura release listed in the README.
+  environment variables above. Each run uses its own fleet, `rail-live-<id>`,
+  creates and removes two tenant-wide rules, and writes a few uniquely marked
+  facts. CI runs it against the open-source Caura release pinned in the workflow.
+  On managed Caura, set `CAURA_RULE_AUTHOR_KEY` and `CAURA_RULE_AUTHOR_AGENT` to
+  an agent-scoped credential so it can author the rules.
 
 ```bash
 export CAURA_URL=http://localhost:8000 CAURA_API_KEY=standalone

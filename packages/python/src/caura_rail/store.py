@@ -2,6 +2,8 @@
 
 import math
 import os
+import sys
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, TypeVar
 from urllib.parse import urlparse
 
@@ -14,6 +16,23 @@ MAX_TOP_K = 20
 
 MAX_QUERY_CHARS = 5000
 """Longest query the Caura search endpoint accepts; longer queries are truncated."""
+
+
+def _user_agent() -> str:
+    try:
+        release = version("caura-rail")
+    except PackageNotFoundError:  # running from an uninstalled source tree
+        release = "0.0.0"
+    return f"caura-rail-python/{release} (python/{sys.version_info.major}.{sys.version_info.minor})"
+
+
+USER_AGENT = _user_agent()
+"""Sent on every request so a server can tell SDK families apart.
+
+Names the package, its version and the Python major.minor, nothing more. No
+other identifying information is added and the store never contacts anything
+but ``base_url``.
+"""
 
 _ConfigT = TypeVar("_ConfigT", bound="_Config")
 _SyncT = TypeVar("_SyncT", bound="RestMemoryStore")
@@ -146,7 +165,7 @@ class _Config:
     def _request_options(
         self, path: str, tenant: str | None = None, **kwargs: Any
     ) -> dict[str, Any]:
-        headers = {"X-API-Key": self._api_key}
+        headers = {"X-API-Key": self._api_key, "User-Agent": USER_AGENT}
         if tenant:
             headers["X-Tenant-ID"] = tenant
         return {
