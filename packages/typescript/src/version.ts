@@ -3,4 +3,4 @@
  * must agree with package.json; `npm test` asserts that and the release
  * workflow checks package.json against the tag.
  */
-export const VERSION = "1.0.1";
+export const VERSION = "1.0.2";
