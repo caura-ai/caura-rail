@@ -9,6 +9,7 @@ word with the query, newest first. Nothing persists beyond the process.
 import json
 import re
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -161,8 +162,12 @@ def serve() -> Iterator[tuple[str, CauraFixture]]:
 
 
 if __name__ == "__main__":
-    import signal
-
     with serve() as (url, _):
         print("Caura fixture listening at", url, flush=True)
-        signal.pause()
+        try:
+            # signal.pause() does not exist on Windows, and a bare lock wait cannot be
+            # interrupted there; a sleep loop stops on Ctrl+C on every platform.
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass

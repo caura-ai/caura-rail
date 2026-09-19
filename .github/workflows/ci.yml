@@ -31,6 +31,9 @@ jobs:
       # Strict typing covers the library, the SDK examples, and the contract tools; the
       # full applications under examples/ carry their own tests and dependencies.
       - run: python -m mypy --config-file packages/python/pyproject.toml packages/python/src/caura_rail examples/fleet.py contracts
+      # Contributors also work on Windows; check the same files against the Windows
+      # standard library so posix-only calls are caught here, not on their machines.
+      - run: python -m mypy --platform win32 --config-file packages/python/pyproject.toml packages/python/src/caura_rail examples/fleet.py contracts
       - run: python -m pytest packages/python/tests -q
       - run: python -m build packages/python
       - run: python -m twine check packages/python/dist/*
