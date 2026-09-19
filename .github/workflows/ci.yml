@@ -43,7 +43,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/rail-wheel"
           "$RUNNER_TEMP/rail-wheel/bin/python" -m pip install packages/python/dist/*.whl
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'import caura_rail; from caura_rail import MemoryScope, Rail, AsyncRail; assert caura_rail.__version__ == "1.0.1"; assert MemoryScope(agent_id="smoke").tenant_id is None'
+          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'import caura_rail; from caura_rail import MemoryScope, Rail, AsyncRail; assert caura_rail.__version__ == "1.0.2"; assert MemoryScope(agent_id="smoke").tenant_id is None'
 
   typescript:
     name: Node ${{ matrix.node }}
@@ -69,7 +69,7 @@ jobs:
           npm init -y
           npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
           node --input-type=module -e 'import { MemoryScope, Rail } from "@caura/rail"; if (new MemoryScope({ agentId: "smoke" }).tenantId !== undefined) process.exit(1);'
-          test "$(node -p 'require("@caura/rail/package.json").version')" = "1.0.1"
+          test "$(node -p 'require("@caura/rail/package.json").version')" = "1.0.2"
 
   interoperability:
     name: Python and TypeScript HTTP contract

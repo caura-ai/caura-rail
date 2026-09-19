@@ -5,6 +5,8 @@ packages share version numbers and release together.
 
 ## Unreleased
 
+## 1.0.2 - 2026-09-19
+
 - `contracts/fixture.py` runs standalone on Windows: the idle wait no longer
   uses `signal.pause()`, which does not exist there and made `mypy` report an
   error for Windows contributors. CI now also type-checks against the Windows
