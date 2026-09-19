@@ -22,8 +22,11 @@ npm install @caura/rail              # Node.js 22+
 
 ## Connect a backend
 
-Rail talks to the Caura REST API with an API key header and a tenant header. The
-`from_env` / `fromEnv` constructors read:
+Rail talks to the Caura REST API with an API key header, a tenant header and a
+`User-Agent` that names the SDK and its version (`caura-rail-python/1.0.1
+(python/3.12)`, `caura-rail-node/1.0.1 (node/22)`), so a server can count which
+SDK families talk to it; see [api.md](api.md#restmemorystore-and-asyncrestmemorystore)
+for the exact strings. The `from_env` / `fromEnv` constructors read:
 
 | Variable | Required | Meaning |
 |---|---|---|

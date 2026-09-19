@@ -1,5 +1,7 @@
 import copy
 import json
+import re
+import sys
 from pathlib import Path
 
 import httpx
@@ -13,7 +15,9 @@ from caura_rail import (
     RestMemoryStore,
     StoreError,
     Visibility,
+    __version__,
 )
+from caura_rail.store import USER_AGENT
 
 CONTRACT = json.loads((Path(__file__).parents[3] / "contracts/caura.json").read_text())
 SCOPE = MemoryScope(agent_id="support-1", fleet_id="support", visibility=Visibility.TEAM)
@@ -27,6 +31,7 @@ class Backend:
     def __call__(self, request):
         self.calls.append(request)
         assert request.headers["X-API-Key"] == "test-key"
+        assert request.headers["User-Agent"] == USER_AGENT
         if request.url.path == "/api/v1/whoami":
             return httpx.Response(200, json=CONTRACT["identity"])
         assert request.headers["X-Tenant-ID"] == CONTRACT["tenant"]
@@ -47,6 +52,12 @@ class Backend:
             self.written = True
             return httpx.Response(status, json=CONTRACT[key])
         raise AssertionError("Unexpected endpoint: " + str(request.url))
+
+
+def test_user_agent_names_the_sdk_and_nothing_else():
+    py = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert USER_AGENT == f"caura-rail-python/{__version__} (python/{py})"
+    assert re.fullmatch(r"caura-rail-python/\d+\.\d+\.\d+ \(python/\d+\.\d+\)", USER_AGENT)
 
 
 def test_sync_contract_and_discovery():
