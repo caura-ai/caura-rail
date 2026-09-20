@@ -79,11 +79,14 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+      # No password: with none given, the action exchanges this job's OIDC token
+      # (permissions.id-token: write above) for a short-lived PyPI upload token.
+      # PyPI's trusted publisher entry for caura-rail names this repository, this
+      # workflow file and the `release` environment; all three must match.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: packages/python/dist/
-          password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
       - name: Publish to npm with provenance
         shell: bash

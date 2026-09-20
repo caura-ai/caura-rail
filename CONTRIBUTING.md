@@ -75,9 +75,11 @@ scans every push and PR.
 3. Trigger the workflow manually with `dry_run` enabled to rehearse without
    publishing.
 
-Publishing needs the `PYPI_API_TOKEN` repository secret (a PyPI API token
-allowed to create and upload `caura-rail`) and either the `NPM_TOKEN` secret (an
-npm token with publish rights to the `@caura` scope) or, once the package
-exists, a trusted publisher entry on `@caura/rail` at npmjs.com naming this
-repository, `release.yml`, and the `release` environment. The workflow skips
-the npm step when the tagged version is already on npm.
+Publishing uses no stored PyPI credential. PyPI's trusted publisher entry on
+`caura-rail` names this repository, `release.yml` and the `release` environment,
+and the workflow exchanges its OIDC token for a short-lived upload token at
+publish time. npm needs either the `NPM_TOKEN` secret (an npm token with publish
+rights to the `@caura` scope) or a trusted publisher entry on `@caura/rail` at
+npmjs.com naming the same repository, workflow and environment. The workflow
+skips the npm step when the tagged version is already on npm, and the PyPI step
+skips files that already exist, so re-running a release is safe.
