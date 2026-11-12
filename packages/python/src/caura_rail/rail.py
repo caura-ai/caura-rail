@@ -9,6 +9,7 @@ from threading import Lock
 from types import TracebackType
 from typing import Any, Generic, TypeVar
 
+from . import _otel
 from .models import (
     AsyncMemoryStore,
     MemoryScope,
@@ -168,6 +169,31 @@ class _Core(Generic[_StoreT]):
             raise ValueError("Extractor returned an invalid fact")
         return list(dict.fromkeys(f.strip() for f in facts if f.strip()))
 
+    def _search_attrs(self, kind: str, query: str | None = None) -> dict[str, Any]:
+        attrs: dict[str, Any] = {"caura.recall.kind": kind}
+        if query is not None and _otel.capture_query_text():
+            attrs["gen_ai.memory.query.text"] = query
+        return attrs
+
+    @staticmethod
+    def _write_attrs(fact: str, scope: MemoryScope, **extra: Any) -> dict[str, Any]:
+        return {
+            "gen_ai.memory.record.count": 1,
+            "caura.scope": scope.visibility.value,
+            "caura.payload.bytes": _otel.utf8_len([fact]),
+            **extra,
+        }
+
+    @staticmethod
+    def _wrote(span: _otel.Span, result: WriteResult) -> None:
+        span.set("gen_ai.memory.record.id", result.id)
+        span.set("caura.write.status", result.status)
+
+    @staticmethod
+    def _found(span: _otel.Span, items: list[Any]) -> None:
+        span.set("gen_ai.memory.record.count", len(items))
+        span.set("caura.payload.bytes", _otel.utf8_len(item.content for item in items))
+
     def _write_failed(self, fact: str, exc: StoreError) -> WriteResult:
         if exc.retryable:
             self.outbox._push(_Pending(fact, self.scope))
@@ -199,13 +225,19 @@ class Rail(_Core[MemoryStore]):
         self._validate_message(query)
         ctx = RecallContext()
         try:
-            ctx.keystones = self.store.keystones(self.scope)
+            rules = self._search_attrs("rules")
+            with _otel.memory_span(_otel.OP_SEARCH, self.scope, rules) as span:
+                ctx.keystones = self.store.keystones(self.scope)
+                self._found(span, ctx.keystones)
         except StoreError as exc:
             if self.require_keystones:
                 raise
             ctx.errors.append("keystones: " + str(exc))
         try:
-            ctx.facts = self.store.recall(query, self.scope, self.top_k)
+            attrs = self._search_attrs("facts", query)
+            with _otel.memory_span(_otel.OP_SEARCH, self.scope, attrs) as span:
+                ctx.facts = self.store.recall(query, self.scope, self.top_k)
+                self._found(span, ctx.facts)
         except StoreError as exc:
             ctx.errors.append("recall: " + str(exc))
         return self._limit_context(ctx)
@@ -234,32 +266,44 @@ class Rail(_Core[MemoryStore]):
             turn.errors.append("extraction_failed")
             return
         for fact in facts:
-            try:
-                result = self.store.write(fact, self.scope)
-            except StoreError as exc:
-                result = self._write_failed(fact, exc)
-                turn.errors.append(result.status)
+            attrs = self._write_attrs(fact, self.scope)
+            with _otel.memory_span(_otel.OP_CREATE, self.scope, attrs) as span:
+                try:
+                    result = self.store.write(fact, self.scope)
+                except StoreError as exc:
+                    span.fail(exc)
+                    result = self._write_failed(fact, exc)
+                    turn.errors.append(result.status)
+                self._wrote(span, result)
             turn.writes.append(result)
 
     def flush_outbox(self, max_attempts: int = 3) -> list[WriteResult]:
         """Replay deferred writes once. Call after connectivity recovers."""
         self._validate_attempts(max_attempts)
         batch, results = self.outbox._take(), []
-        for i, item in enumerate(batch):
-            item.attempts += 1
-            try:
-                results.append(self.store.write(item.fact, item.scope))
-            except StoreError as exc:
-                if exc.retryable and item.attempts < max_attempts:
-                    self.outbox._push(item)
-                    results.append(WriteResult("deferred", error=str(exc)))
-                else:
-                    self.outbox._drop()
-                    results.append(WriteResult("dropped", error=str(exc)))
-            except BaseException:
-                for pending in batch[i:]:
-                    self.outbox._push(pending)
-                raise
+        with _otel.span(_otel.REPLAY_SPAN, {"caura.outbox.batch_size": len(batch)}) as replay:
+            for i, item in enumerate(batch):
+                item.attempts += 1
+                attempt = {"caura.outbox.attempt": item.attempts}
+                attrs = self._write_attrs(item.fact, item.scope, **attempt)
+                with _otel.memory_span(_otel.OP_CREATE, item.scope, attrs) as span:
+                    try:
+                        results.append(self.store.write(item.fact, item.scope))
+                    except StoreError as exc:
+                        span.fail(exc)
+                        if exc.retryable and item.attempts < max_attempts:
+                            self.outbox._push(item)
+                            results.append(WriteResult("deferred", error=str(exc)))
+                        else:
+                            self.outbox._drop()
+                            results.append(WriteResult("dropped", error=str(exc)))
+                    except BaseException:
+                        for pending in batch[i:]:
+                            self.outbox._push(pending)
+                        raise
+                    self._wrote(span, results[-1])
+            for status in ("deferred", "dropped"):
+                replay.set(f"caura.outbox.{status}", sum(r.status == status for r in results))
         return results
 
 
@@ -269,13 +313,21 @@ class Turn(TurnResult):
     def __init__(self, rail: Rail, message: str) -> None:
         super().__init__()
         self._rail, self._message = rail, message
+        self._span: _otel.TurnSpan | None = None
 
     def __enter__(self) -> "Turn":
         self._rail.telemetry.turns_total += 1
+        self._span = _otel.TurnSpan(self._rail.scope)
         try:
             self.context = self._rail.recall(self._message)
-        except StoreError:
+        except StoreError as exc:
             self._rail.telemetry.degraded_turns += 1
+            self._span.end(degraded=True, writes=0, exc=exc)
+            raise
+        except BaseException as exc:
+            # __exit__ never runs when __enter__ raises: end the span and
+            # detach its context here, or later spans nest under an orphan.
+            self._span.end(degraded=False, writes=0, exc=exc)
             raise
         return self
 
@@ -285,6 +337,7 @@ class Turn(TurnResult):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        failure = exc
         try:
             if exc_type is None and self.reply is not None:
                 if not isinstance(self.reply, str):
@@ -292,8 +345,13 @@ class Turn(TurnResult):
                         self.reply.close()
                     raise TypeError("Agent reply must be a string; use AsyncRail for async agents")
                 self._rail._commit(self._message, self)
+        except BaseException as raised:
+            failure = raised
+            raise
         finally:
             self._rail._finish(self)
+            if self._span is not None:
+                self._span.end(degraded=self.degraded, writes=len(self.writes), exc=failure)
 
 
 class AsyncRail(_Core[AsyncMemoryStore]):
@@ -304,13 +362,19 @@ class AsyncRail(_Core[AsyncMemoryStore]):
         self._validate_message(query)
         ctx = RecallContext()
         try:
-            ctx.keystones = await self.store.keystones(self.scope)
+            rules = self._search_attrs("rules")
+            with _otel.memory_span(_otel.OP_SEARCH, self.scope, rules) as span:
+                ctx.keystones = await self.store.keystones(self.scope)
+                self._found(span, ctx.keystones)
         except StoreError as exc:
             if self.require_keystones:
                 raise
             ctx.errors.append("keystones: " + str(exc))
         try:
-            ctx.facts = await self.store.recall(query, self.scope, self.top_k)
+            attrs = self._search_attrs("facts", query)
+            with _otel.memory_span(_otel.OP_SEARCH, self.scope, attrs) as span:
+                ctx.facts = await self.store.recall(query, self.scope, self.top_k)
+                self._found(span, ctx.facts)
         except StoreError as exc:
             ctx.errors.append("recall: " + str(exc))
         return self._limit_context(ctx)
@@ -337,32 +401,44 @@ class AsyncRail(_Core[AsyncMemoryStore]):
             turn.errors.append("extraction_failed")
             return
         for fact in facts:
-            try:
-                result = await self.store.write(fact, self.scope)
-            except StoreError as exc:
-                result = self._write_failed(fact, exc)
-                turn.errors.append(result.status)
+            attrs = self._write_attrs(fact, self.scope)
+            with _otel.memory_span(_otel.OP_CREATE, self.scope, attrs) as span:
+                try:
+                    result = await self.store.write(fact, self.scope)
+                except StoreError as exc:
+                    span.fail(exc)
+                    result = self._write_failed(fact, exc)
+                    turn.errors.append(result.status)
+                self._wrote(span, result)
             turn.writes.append(result)
 
     async def flush_outbox(self, max_attempts: int = 3) -> list[WriteResult]:
         """Replay deferred writes once. Call after connectivity recovers."""
         self._validate_attempts(max_attempts)
         batch, results = self.outbox._take(), []
-        for i, item in enumerate(batch):
-            item.attempts += 1
-            try:
-                results.append(await self.store.write(item.fact, item.scope))
-            except StoreError as exc:
-                if exc.retryable and item.attempts < max_attempts:
-                    self.outbox._push(item)
-                    results.append(WriteResult("deferred", error=str(exc)))
-                else:
-                    self.outbox._drop()
-                    results.append(WriteResult("dropped", error=str(exc)))
-            except BaseException:
-                for pending in batch[i:]:
-                    self.outbox._push(pending)
-                raise
+        with _otel.span(_otel.REPLAY_SPAN, {"caura.outbox.batch_size": len(batch)}) as replay:
+            for i, item in enumerate(batch):
+                item.attempts += 1
+                attempt = {"caura.outbox.attempt": item.attempts}
+                attrs = self._write_attrs(item.fact, item.scope, **attempt)
+                with _otel.memory_span(_otel.OP_CREATE, item.scope, attrs) as span:
+                    try:
+                        results.append(await self.store.write(item.fact, item.scope))
+                    except StoreError as exc:
+                        span.fail(exc)
+                        if exc.retryable and item.attempts < max_attempts:
+                            self.outbox._push(item)
+                            results.append(WriteResult("deferred", error=str(exc)))
+                        else:
+                            self.outbox._drop()
+                            results.append(WriteResult("dropped", error=str(exc)))
+                    except BaseException:
+                        for pending in batch[i:]:
+                            self.outbox._push(pending)
+                        raise
+                    self._wrote(span, results[-1])
+            for status in ("deferred", "dropped"):
+                replay.set(f"caura.outbox.{status}", sum(r.status == status for r in results))
         return results
 
 
@@ -372,13 +448,21 @@ class AsyncTurn(TurnResult):
     def __init__(self, rail: AsyncRail, message: str) -> None:
         super().__init__()
         self._rail, self._message = rail, message
+        self._span: _otel.TurnSpan | None = None
 
     async def __aenter__(self) -> "AsyncTurn":
         self._rail.telemetry.turns_total += 1
+        self._span = _otel.TurnSpan(self._rail.scope)
         try:
             self.context = await self._rail.recall(self._message)
-        except StoreError:
+        except StoreError as exc:
             self._rail.telemetry.degraded_turns += 1
+            self._span.end(degraded=True, writes=0, exc=exc)
+            raise
+        except BaseException as exc:
+            # __aexit__ never runs when __aenter__ raises (cancellation
+            # included): end the span and detach its context here.
+            self._span.end(degraded=False, writes=0, exc=exc)
             raise
         return self
 
@@ -388,10 +472,16 @@ class AsyncTurn(TurnResult):
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        failure = exc
         try:
             if exc_type is None and self.reply is not None:
                 if not isinstance(self.reply, str):
                     raise TypeError("Agent reply must be a string")
                 await self._rail._commit(self._message, self)
+        except BaseException as raised:
+            failure = raised
+            raise
         finally:
             self._rail._finish(self)
+            if self._span is not None:
+                self._span.end(degraded=self.degraded, writes=len(self.writes), exc=failure)

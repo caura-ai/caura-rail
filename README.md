@@ -57,7 +57,8 @@ npm install @caura/rail
 ```
 
 Both packages ship type information. The Python package depends on httpx; the
-npm package has no runtime dependencies.
+npm package has no runtime dependencies. `pip install "caura-rail[otel]"` adds
+OpenTelemetry tracing of each turn ([guide](docs/guide.md#trace-turns-with-opentelemetry)).
 
 ## Connect to Caura
 

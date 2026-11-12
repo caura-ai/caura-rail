@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from . import _otel
 from .models import Fact, KeystoneRule, MemoryScope, StoreError, WriteResult
 
 MAX_TOP_K = 20
@@ -168,6 +169,9 @@ class _Config:
         headers = {"X-API-Key": self._api_key, "User-Agent": USER_AGENT}
         if tenant:
             headers["X-Tenant-ID"] = tenant
+        # W3C traceparent for the current span, so the server's spans join the
+        # caller's trace. Nothing is added without OpenTelemetry configured.
+        _otel.inject(headers)
         return {
             "url": self.base_url + path,
             "headers": headers,

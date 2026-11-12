@@ -460,6 +460,58 @@ The outbox holds 1,000 items by default. Pass `Outbox(capacity)` /
 `outbox.total_dropped` / `outbox.totalDropped` increments. Pending items are lost
 when the process exits; see [Reliability](reliability.md) for the full semantics.
 
+## Trace turns with OpenTelemetry
+
+Python only for now; TypeScript is tracked in
+[#34](https://github.com/caura-ai/caura-rail/issues/34). Install the `otel` extra,
+and each turn becomes a trace in whatever OpenTelemetry backend your application
+already exports to (Langfuse, Datadog, Phoenix, Jaeger, ...):
+
+```bash
+python -m pip install "caura-rail[otel]"
+```
+
+Rail uses the OpenTelemetry API and never configures an exporter itself; it
+traces only once your application has set up the OpenTelemetry SDK. The usual
+setup, here exporting over OTLP to the endpoint in
+`OTEL_EXPORTER_OTLP_ENDPOINT`:
+
+```python no-run
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+from caura_rail import MemoryScope, Rail, RestMemoryStore
+
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(provider)
+
+with RestMemoryStore.from_env() as store:
+    rail = Rail(store, MemoryScope(agent_id="support-1"))
+    with rail.turn("Remember: We deploy in eu-west-1.") as turn:
+        turn.reply = "Noted."  # your model call; its own spans nest inside the turn
+provider.shutdown()
+```
+
+Each turn is one `caura.rail.turn` span containing:
+
+- two `search_memory` spans, one for the governance rules and one for the facts
+  (`caura.recall.kind` is `rules` or `facts`);
+- whatever your agent traces while it runs;
+- a `create_memory` span per stored fact.
+
+`flush_outbox()` is one `caura.outbox.replay` span with a `create_memory` span
+per queued fact. Store calls carry a W3C `traceparent` header, so a Caura server
+with tracing enabled adds its own spans to the same trace (server setup:
+[docs/opentelemetry.md](https://github.com/caura-ai/caura/blob/main/docs/opentelemetry.md)).
+
+Spans carry identifiers, counts and sizes, never memory content. The recall
+query is added only when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_CONTENT` is
+`SPAN_ONLY` or `SPAN_AND_EVENT`. Names and attributes follow the OpenTelemetry
+GenAI memory conventions; the [API reference](api.md#opentelemetry) lists them.
+
 ## Async Python
 
 `AsyncRail` and `AsyncRestMemoryStore` mirror the synchronous API with `async`
