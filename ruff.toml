@@ -2,6 +2,10 @@
 # packages/python/pyproject.toml carries the same settings for the package itself.
 target-version = "py310"
 line-length = 100
+# Verbatim copies of caura-ai/caura's review scripts (see the header of
+# .github/workflows/claude_code_review.yml), linted there under its settings.
+# Reformatting them here would turn every later port into a merge.
+extend-exclude = [".github/scripts"]
 
 [lint]
 select = ["E", "F", "I"]
