@@ -4,4 +4,4 @@
  * workflow checks package.json against the tag. release-please bumps it with
  * the other version files, finding it by the marker at the end of the line.
  */
-export const VERSION = "1.0.2"; // x-release-please-version
+export const VERSION = "1.1.0"; // x-release-please-version

@@ -6,6 +6,19 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.1.0](https://github.com/caura-ai/caura-rail/compare/v1.0.2...v1.1.0) (2026-11-12)
+
+
+### Features
+
+* **python:** OpenTelemetry spans for turns, and W3C trace propagation ([4ffa637](https://github.com/caura-ai/caura-rail/commit/4ffa637ced0675747a3ab73fc06ae6baf0f4fa68))
+
+
+### Dependencies
+
+* bump @types/node from 24.13.3 to 26.6.6 ([a1788dc](https://github.com/caura-ai/caura-rail/commit/a1788dc4da8b6d9b51eb8844d0aeb6c1f71fc25f))
+* bump the github-actions group across 1 directory with 7 updates ([6d90834](https://github.com/caura-ai/caura-rail/commit/6d9083488d0e2d0920ee2e4e209aa04e77603581))
+
 ## 1.0.2 - 2026-09-19
 
 - `contracts/fixture.py` runs standalone on Windows: the idle wait no longer
