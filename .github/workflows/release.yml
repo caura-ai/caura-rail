@@ -1,8 +1,11 @@
 name: Release
 
+# release-please (release-please.yml) tags vX.Y.Z and publishes the GitHub release
+# when its release PR merges; that published release starts this workflow. Run it
+# by hand on a tag to re-publish, or on any ref with dry_run to rehearse.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -59,7 +62,7 @@ jobs:
   publish:
     name: Publish
     needs: build
-    if: github.event_name == 'push' || inputs.dry_run == false
+    if: github.event_name == 'release' || inputs.dry_run == false
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -104,10 +107,17 @@ jobs:
             # The leading ./ matters: a bare "dir/file.tgz" is parsed as a GitHub shorthand.
             npm publish ./dist-npm/caura-rail-*.tgz --access public --provenance
           fi
-      - name: Create GitHub release
+      # release-please has normally published the release already, with its
+      # changelog section as the notes; attach the artifacts to it. Created here
+      # only for a manual run on a tag that has no release yet.
+      - name: Attach artifacts to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.build.outputs.version }}
         run: |
-          gh release view "v${{ needs.build.outputs.version }}" >/dev/null 2>&1 && exit 0
-          gh release create "v${{ needs.build.outputs.version }}" packages/python/dist/* dist-npm/*.tgz \
-            --title "v${{ needs.build.outputs.version }}" --notes-file <(awk '/^## /{n++} n==2' CHANGELOG.md)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" packages/python/dist/* dist-npm/*.tgz --clobber
+          else
+            gh release create "$TAG" packages/python/dist/* dist-npm/*.tgz \
+              --title "$TAG" --notes-file <(awk '/^## /{n++} n==1' CHANGELOG.md)
+          fi

@@ -53,8 +53,13 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/rail-wheel"
           "$RUNNER_TEMP/rail-wheel/bin/python" -m pip install packages/python/dist/*.whl
+          # The installed wheel must report the version in source; release-please bumps it.
+          # sed, not tomllib: this job also runs on Python 3.10, which has no tomllib.
+          EXPECTED=$(sed -n 's/^version = "\(.*\)"$/\1/p' packages/python/pyproject.toml)
+          test -n "$EXPECTED"
+          export EXPECTED
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'import caura_rail; from caura_rail import MemoryScope, Rail, AsyncRail; assert caura_rail.__version__ == "1.0.2"; assert MemoryScope(agent_id="smoke").tenant_id is None'
+          "$RUNNER_TEMP/rail-wheel/bin/python" -c 'import os, caura_rail; from caura_rail import MemoryScope, Rail, AsyncRail; assert caura_rail.__version__ == os.environ["EXPECTED"], caura_rail.__version__; assert MemoryScope(agent_id="smoke").tenant_id is None'
 
   typescript:
     name: Node ${{ matrix.node }}
@@ -77,13 +82,15 @@ jobs:
       - name: Install tarball outside checkout
         shell: bash
         run: |
+          # The installed tarball must report the version in source; release-please bumps it.
+          EXPECTED=$(node -p 'require("./packages/typescript/package.json").version')
           npm pack --workspace @caura/rail --pack-destination "$RUNNER_TEMP"
           mkdir "$RUNNER_TEMP/rail-npm"
           cd "$RUNNER_TEMP/rail-npm"
           npm init -y
           npm install --ignore-scripts "$RUNNER_TEMP"/caura-rail-*.tgz
           node --input-type=module -e 'import { MemoryScope, Rail } from "@caura/rail"; if (new MemoryScope({ agentId: "smoke" }).tenantId !== undefined) process.exit(1);'
-          test "$(node -p 'require("@caura/rail/package.json").version')" = "1.0.2"
+          test "$(node -p 'require("@caura/rail/package.json").version')" = "$EXPECTED"
 
   interoperability:
     name: Python and TypeScript HTTP contract
