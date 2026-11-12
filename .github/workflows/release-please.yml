@@ -1,0 +1,70 @@
+name: release-please
+
+# Conventional-Commits-driven releases, as in caura-ai/caura. On every push to
+# main, release-please reads the new commits and opens or updates one release PR
+# ("chore(main): release X.Y.Z") when a feat, fix, perf, deps, docs, refactor or
+# revert commit has landed, and does nothing otherwise. That PR bumps the version
+# in every file release-please-config.json lists (both packages share one) and
+# adds the CHANGELOG.md section. Merging it tags vX.Y.Z and publishes the GitHub
+# release, and that release starts release.yml, which builds, verifies and
+# publishes to PyPI and npm.
+#
+# Auth: the caura-release GitHub App (the one caura-ai/caura uses), with
+# Contents, Pull requests and Issues write and implicit Metadata read. Its key is
+# stored only in the `release-please` environment, whose deployment rule admits
+# the main branch alone, so no other ref's workflow can read it. The minted token
+# is further narrowed to this repository and those three permissions.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The App token does the writing; the job's own token only needs to read.
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-please
+    steps:
+      # The environment's branch rule is what withholds the key from other
+      # refs; this refuses anything else before a token exists.
+      - name: Require this repository's main branch
+        env:
+          REPOSITORY_ID: ${{ github.repository_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = caura-ai/caura-rail
+          test "$REPOSITORY_ID" = 1361245884
+          test "$GITHUB_REF" = refs/heads/main
+          case "$GITHUB_EVENT_NAME" in
+            push|workflow_dispatch) ;;
+            *) exit 1 ;;
+          esac
+
+      # An App token, not the default GITHUB_TOKEN. GitHub runs no workflows for
+      # what the default token creates: the release PR would get no CI or DCO
+      # run, so its required checks would never report and it could not merge,
+      # and the release it publishes would never start release.yml.
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          # The caura-release App's Client ID. It is public, so it lives here; only
+          # the private key is a secret.
+          client-id: Iv23liJAMLLlQtdvIRd0
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: caura-ai
+          repositories: caura-rail
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

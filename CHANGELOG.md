@@ -1,9 +1,10 @@
 # Changelog
 
 All notable changes to `caura-rail` (PyPI) and `@caura/rail` (npm). Both
-packages share version numbers and release together.
-
-## Unreleased
+packages share version numbers and release together. Sections after 1.0.2 are
+written by [release-please](https://github.com/googleapis/release-please) from the
+[Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
+their wording can be edited in the release pull request before it merges.
 
 ## 1.0.2 - 2026-09-19
 
