@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+# A push to an open pull request supersedes the run on its previous head, whose
+# result nobody acts on once it is behind, so that run is cancelled. Runs on main
+# are left to finish. The group includes the workflow name because concurrency
+# groups are repository-wide.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # Open-source Caura release the live job verifies against. Update deliberately.
   CAURA_SERVER_REF: backend-v2.47.5
@@ -17,12 +25,15 @@ jobs:
   python:
     name: Python ${{ matrix.python }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
@@ -48,12 +59,15 @@ jobs:
   typescript:
     name: Node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         node: ["22", "24"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
@@ -74,8 +88,11 @@ jobs:
   interoperability:
     name: Python and TypeScript HTTP contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -105,8 +122,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: caura-ai/caura
           ref: ${{ env.CAURA_SERVER_REF }}
           path: caura-server
@@ -169,8 +189,11 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -185,12 +208,26 @@ jobs:
         run: npm audit --audit-level=high
 
   ci:
-    # Single required status for branch protection; fails if any job above failed.
+    # The required "CI" check: main's branch protection requires a check with this
+    # name, and it fails unless every job above succeeded. ``always()`` makes it
+    # run, and fail, when a needed job failed, was cancelled or was skipped;
+    # without it this job would itself be skipped, and a skipped required check
+    # counts as passing. A new job must be added to ``needs`` to be gated.
+    # The needs map arrives through the environment, not spliced into the script.
     name: CI
-    if: always()
+    if: ${{ always() }}
     needs: [python, typescript, interoperability, live, audit]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - name: Check that every job succeeded
+      - name: Require every CI job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          echo '${{ toJSON(needs) }}' | python3 -c 'import sys, json; r = json.load(sys.stdin); bad = [k for k, v in r.items() if v["result"] != "success"]; print("failed:", bad) if bad else print("all jobs succeeded"); sys.exit(1 if bad else 0)'
+          echo "${NEEDS}" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          not_ok=$(echo "${NEEDS}" | jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")')
+          if [ -n "${not_ok}" ]; then
+            echo "::error::CI jobs that did not succeed: ${not_ok}"
+            exit 1
+          fi
