@@ -224,6 +224,34 @@ Process-local counters on `rail.telemetry`, never reset:
 | `writes_rejected` | `writesRejected` | A write fails permanently. |
 | `extraction_failures` | `extractionFailures` | The extractor raised or returned invalid output. |
 
+## OpenTelemetry
+
+Python, with `caura-rail[otel]` installed and an OpenTelemetry SDK configured by
+the application; TypeScript is tracked in
+[#34](https://github.com/caura-ai/caura-rail/issues/34). Without either, Rail
+traces nothing and sends no `traceparent`.
+Store requests carry the W3C trace context (`traceparent`, `tracestate`) and nothing
+else from the application's context: no `baggage`, whatever propagators the
+application configured.
+
+| Span | Kind | Attributes |
+|---|---|---|
+| `caura.rail.turn` | INTERNAL | `gen_ai.agent.id`, `caura.rail.degraded`, `caura.rail.writes` |
+| `search_memory` | CLIENT | `caura.recall.kind` (`rules` or `facts`), `gen_ai.memory.record.count`, `caura.payload.bytes` (content bytes returned) |
+| `create_memory` | CLIENT | `gen_ai.memory.record.count` (1), `gen_ai.memory.record.id`, `caura.write.status`, `caura.scope`, `caura.payload.bytes` (content bytes sent), `caura.outbox.attempt` during replay |
+| `caura.outbox.replay` | INTERNAL | `caura.outbox.batch_size`, `caura.outbox.deferred`, `caura.outbox.dropped` |
+
+Every memory span also has `gen_ai.operation.name`, `gen_ai.provider.name`
+(`caura`), `gen_ai.agent.id` and, when the scope names a tenant,
+`gen_ai.memory.store.id`. A failure sets the span status to error and
+`error.type` to the HTTP status, or to the exception class when there is none;
+exception messages are not recorded. `gen_ai.memory.query.text` is added to the
+facts search only when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_CONTENT` is
+`SPAN_ONLY` or `SPAN_AND_EVENT`. Attribute names follow
+[open-telemetry/semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai/blob/e6658f14c9d9ea0760825f029cb82e7673f48fab/docs/gen-ai/gen-ai-spans.md#memory)
+at commit `e6658f14`, the conventions being unreleased and at "Development"
+status.
+
 ## Extractors
 
 Python `Extractor = Callable[[str, str], list[str]]`; `AsyncExtractor` may also
