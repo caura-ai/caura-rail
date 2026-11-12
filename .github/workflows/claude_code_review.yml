@@ -1,0 +1,314 @@
+# Claude Code Review
+#
+# PORTED FROM caura-ai/caura (.github/workflows/claude_code_review.yml at
+# b3d305f64c3c00871b6981b728e85e9df3a97877). The six files under .github/scripts/ are byte-for-byte
+# copies of that commit's, so a later fix there ports with a plain copy; only this file differs,
+# in EXTRA_PROMPT, REVIEW_PROMPT and this paragraph. Issue numbers in the copied comments
+# (#733, #1581, caura#1992, ...) are caura-ai/caura's. Port fixes deliberately from that repo
+# rather than editing the scripts here.
+#
+# DELIBERATELY A LOCAL COPY, NOT THE ORG'S SHARED PIPELINE. Do not "consolidate" this into
+# ``uses: caura-ai/.github/...`` — that was tried in caura-ai/caura#733 and it CANNOT work here. This
+# repository is PUBLIC and ``caura-ai/.github`` is PRIVATE, and GitHub allows a component
+# (reusable workflow or composite action) in a private repository to be used only by private
+# repositories. The failure mode is silent and easy to misread: the run dies instantly with
+# "This run likely failed because of a workflow file issue", creates ZERO jobs and writes no
+# logs, so it looks like malformed YAML rather than a refusal. In caura-ai/caura every run between
+# 2026-08-08 and the revert failed that way, and no pull request there was reviewed in that window.
+#
+# Sharing this with the org would require the pipeline to live in a PUBLIC repository. That is a
+# real option, not a dead end — it is just a decision about publishing the pipeline, and until
+# it is taken this copy is the supported arrangement. Keep it in step with the shared pipeline
+# by porting changes deliberately rather than by pointing at it.
+#
+# A review runs when a member of the ``caura-ai`` organization comments
+# "@claude" on a pull request: once CI is green, to re-review after a push, or on
+# a draft. Opening a pull request does not start one. The comment path has no
+# file cap and no docs-only skip, so it reviews a pull request of any size.
+# When a pull request merges into main, claude-capture records the review
+# findings that were declined on it.
+#
+# THE KEYS STAY ON MAIN. Both jobs read CLAUDE_CODE_REVIEW_API_KEY (the review
+# model's key, which spends real budget) and CAURA_AGENTS_KEY (which reads and
+# writes the shared review guidance in Caura) from the ``claude-review``
+# environment, which only main can deploy to. Every path here therefore runs
+# main's own workflow and scripts: an ``issue_comment`` always runs the default
+# branch's copy of this file, and capture runs on a push to main. Neither job
+# checks out the pull request; the review reads its diff through the API. Do not
+# add a ``pull_request`` trigger, or a checkout of a pull request's ref, to a job
+# that reads either key. Nor ``pull_request_target``: GitHub turns it off by
+# default in public repositories, so capture would stop without a word.
+#
+# WHO MAY TRIGGER. ``claude-review`` runs only for a comment whose
+# ``author_association`` is MEMBER or OWNER, checked at job level and again in
+# its first step. It validates the COMMENTER, not the pull request's author, so
+# a member vouching for someone else's pull request is a supported flow. On an
+# ``issue_comment`` payload that field reports MEMBER for a private member of
+# this org as well as a public one (observed); the ``pull_request`` payload
+# reports CONTRIBUTOR for the same person, which anyone with a merged commit
+# also earns, so nothing here gates on it.
+
+name: Claude Code Review
+
+on:
+  # A merge into main feeds claude-capture. A push to main runs main's copy of this workflow,
+  # which is what lets capture read its key from the main-only environment.
+  push:
+    branches: [main]
+  issue_comment:
+    types: [created]
+  # Manual backfill for claude-capture, mirroring the shared pipeline's caller. Two uses: it makes
+  # capture verifiable the moment CAURA_AGENTS_KEY is added — the on-merge path cannot be tested
+  # on demand, since it needs a real merge that happens to carry a declined finding — and it can
+  # extract declines from pull requests that merged BEFORE capture existed here.
+  #
+  # `required: true` so an empty value is refused when the run is started; the capture job's lookup
+  # step would otherwise only warn that it is not a pull request number and skip.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Merged PR number to capture declined findings from"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  EXTRA_PROMPT: "This is Caura Rail, two SDKs with the same semantics that wrap an agent's turn with memory: recall before it, extract and write after it. packages/python is caura-rail on PyPI (src/caura_rail, Python 3.10+, httpx its only runtime dependency, mypy strict, also type-checked against the Windows standard library). packages/typescript is @caura/rail on npm (Node.js 22+, no runtime dependencies). A behaviour change in one package normally needs the same change in the other. contracts/ holds the HTTP contract both stores must honour (caura.json, a local fixture server, a live check), and contracts/verify_docs.py runs and type-checks every code block in README.md and docs/, so documentation examples are executable. examples/ are demo applications with their own dependencies. CHANGELOG.md takes an entry under Unreleased for user-visible changes, and every commit carries a DCO sign-off."
+  REVIEW_PROMPT: |
+    Do NOT review test files: packages/python/tests/, packages/typescript/test/
+    and examples/*/tests/ — EXCEPT conftest.py and other shared fixtures or
+    helpers, which you MUST review like source code, since a "No issues
+    found" over a diff whose fixtures were excluded means nothing. contracts/
+    is NOT tests: it is the contract and the documentation check, so review
+    it. Focus otherwise on source code.
+
+    Review this PR for real issues only — not style preferences.
+
+    ## Format
+
+    For each issue:
+
+    ### Issue Title
+    **Severity**: Critical/High/Medium/Low
+    **File**: `path/to/file.py:line-range`
+    **Problem**: One sentence.
+
+    <details>
+    <summary>🤖 Claude Code Prompt</summary>
+
+    ```
+    [Self-contained prompt with exact file paths, line numbers, what to change and why]
+    ```
+
+    </details>
+
+    ---
+
+    ## Sections
+    1. **Summary**: 2-3 sentences
+    2. **Critical/High Issues**: Must fix before merge
+    3. **Medium/Low Issues**: Should fix, not blocking
+    4. **Suggestions**: Nice-to-have
+    Skip empty sections.
+
+    Every prompt above is self-contained, so do not repeat them in a combined "fix all" block at the
+    end. One prompt per issue, once. Output nothing after the last issue.
+
+    Everything inside a prompt block is text for a person or an agent to READ. Never emit tool calls,
+    function-call syntax, or JSON arrays of edit operations (`{"tool_code": ...}`,
+    `default_api.replace(...)`, `old_string`/`new_string` pairs). Describe the change in words and
+    name the file and lines; do not write code that performs it.
+
+jobs:
+  # Runs on an @claude comment from an org member (MEMBER or OWNER).
+  claude-review:
+    # Hardening: gate at the job level on author_association so the runner never
+    # even starts for a non-member's @claude comment. The step-level "Check
+    # commenter is org member" below still re-validates and sets the
+    # ``authorized`` output for defense-in-depth — both read the same
+    # ``author_association`` field, so the two conditions cannot disagree.
+    if: >-
+      github.event_name == 'issue_comment'
+      && contains(github.event.comment.body, '@claude')
+      && contains(fromJSON('["MEMBER", "OWNER"]'), github.event.comment.author_association)
+    timeout-minutes: 20
+    # Pinned, not ubuntu-latest: on the 26.04 image the reviewer sandbox cannot
+    # start ("bwrap: setting up uid map: Permission denied" in
+    # install_review_sandbox.sh), so the job fails before any review. GitHub
+    # moves ubuntu-latest to 26.04 between 2026-10-19 and 2026-11-19, a few
+    # runners at a time, so this failed on some runs and not others. Move to
+    # 26.04 only with a sandbox setup shown to start there.
+    runs-on: ubuntu-24.04
+    environment: claude-review
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check commenter is org member
+        id: auth
+        env:
+          AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          # ``author_association`` is set by GitHub on the event payload
+          # and reflects the commenter's relationship to the repo's
+          # owner organization. ``MEMBER`` = org member, ``OWNER`` = org
+          # owner.
+          #
+          # On an ``issue_comment`` payload this DOES resolve for a private
+          # org member — observed reporting ``MEMBER`` for a member whose
+          # org membership was private. On a ``pull_request`` payload the
+          # same person reports ``CONTRIBUTOR``; see the header comment.
+          #
+          # ``COLLABORATOR`` (non-org members granted direct repo write
+          # access via Settings → Collaborators) is INTENTIONALLY
+          # excluded — the policy is "members of our org only", which
+          # is stricter than the previous ``write``/``admin`` permission
+          # check. If a future operator wants to widen this, do it
+          # explicitly; do not "fix" it back as a presumed bug.
+          case "$AUTHOR_ASSOC" in
+            MEMBER|OWNER)
+              echo "authorized=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "authorized=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::@claude triggered by ${COMMENTER} (author_association: ${AUTHOR_ASSOC}) — skipping, org membership required"
+              ;;
+          esac
+
+      - name: Get PR details
+        if: steps.auth.outputs.authorized == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.issue.number }}
+          REPO=${{ github.repository }}
+
+          # Verify this is a PR comment, not an issue comment. Only the exit status is used —
+          # the captured value was never read, and it held the PR number rather than the HTTP
+          # code its name claimed.
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.number' >/dev/null 2>&1 || {
+            echo "Not a PR comment, skipping"
+            echo "is_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          echo "is_pr=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      # Check out the BASE repo's default branch — deliberately NOT the PR/fork
+      # code. This job holds the review keys and a write GH_TOKEN, so the review
+      # script below comes from main and pulls the PR diff via the GitHub API;
+      # no pull request's code runs here. A ``ref: <head_ref>`` also failed
+      # outright for a fork, whose branch does not exist here (.github#111).
+      - name: Checkout base repo (trusted review script)
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Claude CLI
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        # A backstop for the script's own bound on each download, well inside the
+        # job's 20 minutes, so a dead package mirror fails here and not the review.
+        timeout-minutes: 10
+        run: bash .github/scripts/install_review_sandbox.sh
+
+      # Feeds the real diff to `claude --print`. Replaces the claude-code-action
+      # agent, which never received the diff (it tried `gh`, hit the headless
+      # permission wall) and produced an empty result stamped "No issues found".
+      - name: Review PR diff
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_REVIEW_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          EXTRA_PROMPT: ${{ env.EXTRA_PROMPT }}
+          REVIEW_PROMPT: ${{ env.REVIEW_PROMPT }}
+          # Learned guidance from the shared code-review fleet, from the claude-review
+          # environment. Without it recall is a silent no-op and the review is unchanged.
+          CAURA_AGENTS_KEY: ${{ secrets.CAURA_AGENTS_KEY }}
+        run: bash .github/scripts/claude_pr_review.sh
+
+  # Runs on MERGE, and only on merge: extracts findings a maintainer DECLINED into the shared
+  # code-review fleet so future reviews stop re-raising them. The write half of the loop; recall
+  # in claude_pr_review.sh is the read half.
+  #
+  # The push says which commit landed, not which pull request, so the first step looks up the
+  # pull request that merged into main as that commit. A pull request closed WITHOUT merging never
+  # produces such a push: it carries no accepted judgement, and capturing declines from an
+  # abandoned branch would teach the reviewer from a decision nobody stood behind.
+  #
+  # Dark and silent without CAURA_AGENTS_KEY in the claude-review environment: the job still runs
+  # and exits 0 having logged that it was dark, which is the diagnosable outcome.
+  # Only this job answers push and workflow_dispatch; claude-review needs an issue_comment, so
+  # neither can start a review.
+  claude-capture:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: claude-review
+    permissions:
+      contents: read
+      # Read-only: this job reads a comment thread and writes to Caura, never to the PR.
+      issues: read
+      # Needed IN ADDITION to issues:read — listing comments on an issue that is actually a pull
+      # request 403s without it.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      # Best-effort like the capture script: a failed lookup warns and leaves the number empty,
+      # which skips the steps below, so a post-merge job never red-Xes a merged pull request.
+      - name: Find the merged pull request
+        id: merged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MERGE_SHA: ${{ github.sha }}
+          DISPATCH_PR: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          pr=""
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ "$DISPATCH_PR" =~ ^[1-9][0-9]*$ ]]; then
+              pr="$DISPATCH_PR"
+            else
+              echo "::warning::pr_number must be a pull request number — skipping capture"
+            fi
+          elif pulls=$(gh api "repos/${REPO}/commits/${MERGE_SHA}/pulls"); then
+            # Several pull requests can contain a commit; only one merged into main AS it.
+            pr=$(printf '%s' "$pulls" | jq -r --arg sha "$MERGE_SHA" \
+              'map(select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha))
+               | first | .number // empty') || pr=""
+            [ -n "$pr" ] || echo "::notice::No pull request merged into main as ${MERGE_SHA} — nothing to capture"
+          else
+            echo "::warning::Could not look up the pull request for ${MERGE_SHA} — skipping capture"
+          fi
+          [ -z "$pr" ] || echo "::notice::Capturing from PR #${pr}"
+          echo "pr_number=${pr}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Claude CLI
+        if: steps.merged.outputs.pr_number != ''
+        run: npm install -g @anthropic-ai/claude-code@2.1.159 # pinned: keep in step with the review job
+
+      - name: Capture declined review findings
+        if: steps.merged.outputs.pr_number != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_CODE_REVIEW_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.merged.outputs.pr_number }}
+          CAURA_AGENTS_KEY: ${{ secrets.CAURA_AGENTS_KEY }}
+        run: bash .github/scripts/claude_pr_capture.sh

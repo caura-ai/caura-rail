@@ -49,6 +49,12 @@ git config --global format.signoff true   # or make it the default
 Dependabot opens weekly update PRs for pip, npm, and GitHub Actions; CodeQL
 scans every push and PR.
 
+A member of the `caura-ai` organization can ask for an AI code review by
+commenting `@claude` on a pull request, typically once CI is green and again
+after each push. The review is advisory, covers only the commit it read, and
+is posted as a comment; it runs main's copy of
+`.github/workflows/claude_code_review.yml`, never the pull request's.
+
 ## Changing behavior
 
 - Keep the two packages equivalent. A behavior change lands in both, with tests in
