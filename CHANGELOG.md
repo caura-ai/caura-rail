@@ -6,6 +6,13 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.2.0](https://github.com/caura-ai/caura-rail/compare/v1.1.0...v1.2.0) (2026-11-14)
+
+
+### Features
+
+* **typescript:** OpenTelemetry spans for turns, and W3C trace propagation ([34e8f82](https://github.com/caura-ai/caura-rail/commit/34e8f82c0aeaf3a05a8a12090fbd19d60e15bb8c))
+
 ## [1.1.0](https://github.com/caura-ai/caura-rail/compare/v1.0.2...v1.1.0) (2026-11-12)
 
 
