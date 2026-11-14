@@ -97,11 +97,11 @@ only in the `release-please` environment (deployable from `main` alone): a
 release pull request opened with the default token would run no checks, and a
 release it published would not start the release workflow.
 
-Publishing uses no stored PyPI credential. PyPI's trusted publisher entry on
-`caura-rail` names this repository, `release.yml` and the `release` environment,
-and the workflow exchanges its OIDC token for a short-lived upload token at
-publish time. npm needs either the `NPM_TOKEN` secret (an npm token with publish
-rights to the `@caura` scope) or a trusted publisher entry on `@caura/rail` at
-npmjs.com naming the same repository, workflow and environment. The workflow
-skips the npm step when the tagged version is already on npm, and the PyPI step
-skips files that already exist, so re-running a release is safe.
+Publishing uses no stored credential. The trusted publisher entries for
+`caura-rail` on PyPI and for `@caura/rail` on npm both name this repository,
+`release.yml` and the `release` environment, and the workflow exchanges its OIDC
+token for a short-lived upload token at publish time. Renaming the workflow file
+or the environment means updating both entries; a new npm entry expires unless a
+release publishes through it within two days. The workflow skips the npm step
+when the tagged version is already on npm, and the PyPI step skips files that
+already exist, so re-running a release is safe.
