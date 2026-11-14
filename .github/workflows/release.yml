@@ -78,10 +78,12 @@ jobs:
         with:
           name: npm-dist
           path: dist-npm/
+      # No registry-url here: setup-node would write `_authToken=${NODE_AUTH_TOKEN}`
+      # to an .npmrc, and with the variable unset npm sends that text as a token, so
+      # a failed OIDC exchange would end in a rejected upload instead of ENEEDAUTH.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-          registry-url: https://registry.npmjs.org
       # No password: with none given, the action exchanges this job's OIDC token
       # (permissions.id-token: write above) for a short-lived PyPI upload token.
       # PyPI's trusted publisher entry for caura-rail names this repository, this
@@ -91,13 +93,12 @@ jobs:
         with:
           packages-dir: packages/python/dist/
           skip-existing: true
+      # No token either: npm >= 11.5.1 exchanges the same OIDC token for a
+      # short-lived publish token. @caura/rail's trusted publisher entry on
+      # npmjs.com names the same repository, workflow file and environment. If the
+      # exchange fails, npm stops with ENEEDAUTH before uploading anything.
       - name: Publish to npm with provenance
         shell: bash
-        env:
-          # With NPM_TOKEN set, setup-node's registry-url makes npm use it. Without
-          # it, npm >= 11.5 exchanges the job's OIDC token for publish rights when
-          # the package lists this repository and workflow as a trusted publisher.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@latest
           npm --version
