@@ -24,6 +24,11 @@ const turn = await rail.turn("Remember: We deploy in eu-west-1.", async (message
 console.log(turn.reply, turn.writes.map(w => w.status));
 ```
 
+Install `@opentelemetry/api` beside it and register an OpenTelemetry SDK (for
+example `NodeSDK`), and each turn becomes a trace: a `caura.rail.turn` span with
+its memory calls inside, and a W3C `traceparent` on every request so a Caura
+server joins the same trace. Without the API package, nothing changes.
+
 Full documentation, including the guide, API reference, and reliability
 semantics, lives in the
 [repository](https://github.com/caura-ai/caura-rail#readme).
