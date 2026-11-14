@@ -1,6 +1,10 @@
 import {
   MemoryScope, type MemoryStore, RecallContext, StoreError, type WriteResult,
 } from "./models.js";
+import {
+  OP_CREATE, OP_SEARCH, REPLAY_SPAN, internalSpan, memorySpan, recordFound, recordWrite,
+  searchAttributes, turnSpan, writeAttributes,
+} from "./otel.js";
 
 export type Extractor = (message: string, reply: string) => string[] | Promise<string[]>;
 export type Agent = (message: string, context: RecallContext) => string | Promise<string>;
@@ -85,13 +89,23 @@ export class Rail {
   async recall(query: string): Promise<RecallContext> {
     if (typeof query !== "string" || !query.trim()) throw new TypeError("query must be nonempty");
     const ctx = new RecallContext();
-    try { ctx.keystones = await this.store.keystones(this.scope); }
-    catch (error) {
+    try {
+      ctx.keystones = await memorySpan(OP_SEARCH, this.scope, searchAttributes("rules"), async span => {
+        const rules = await this.store.keystones(this.scope);
+        recordFound(span, rules);
+        return rules;
+      });
+    } catch (error) {
       if (!(error instanceof StoreError) || this.requireKeystones) throw error;
       ctx.errors.push("keystones: " + error.message);
     }
-    try { ctx.facts = await this.store.recall(query, this.scope, this.topK); }
-    catch (error) {
+    try {
+      ctx.facts = await memorySpan(OP_SEARCH, this.scope, searchAttributes("facts", query), async span => {
+        const facts = await this.store.recall(query, this.scope, this.topK);
+        recordFound(span, facts);
+        return facts;
+      });
+    } catch (error) {
       if (!(error instanceof StoreError)) throw error;
       ctx.errors.push("recall: " + error.message);
     }
@@ -117,6 +131,10 @@ export class Rail {
     if (typeof message !== "string" || !message.trim()) throw new TypeError("message must be nonempty");
     this.telemetry.turnsTotal++;
     const turn = new TurnResult();
+    return turnSpan(this.scope, turn, () => this.runTurn(message, agent, turn));
+  }
+
+  private async runTurn(message: string, agent: Agent, turn: TurnResult): Promise<TurnResult> {
     try {
       try { turn.context = await this.recall(message); }
       catch (error) {
@@ -139,19 +157,25 @@ export class Rail {
         return turn;
       }
       for (const fact of facts) {
-        try { turn.writes.push(await this.store.write(fact, this.scope)); }
-        catch (error) {
-          if (!(error instanceof StoreError)) throw error;
-          if (error.retryable) {
-            this.outbox.push({ fact, scope: this.scope, attempts: 0 });
-            this.telemetry.writesDeferred++;
-            turn.writes.push({ status: "deferred", error: error.message });
-          } else {
-            this.telemetry.writesRejected++;
-            turn.writes.push({ status: "rejected", error: error.message });
+        turn.writes.push(await memorySpan(OP_CREATE, this.scope, writeAttributes(fact, this.scope), async span => {
+          let result: WriteResult;
+          try { result = await this.store.write(fact, this.scope); }
+          catch (error) {
+            if (!(error instanceof StoreError)) throw error;
+            span.fail(error);
+            if (error.retryable) {
+              this.outbox.push({ fact, scope: this.scope, attempts: 0 });
+              this.telemetry.writesDeferred++;
+              result = { status: "deferred", error: error.message };
+            } else {
+              this.telemetry.writesRejected++;
+              result = { status: "rejected", error: error.message };
+            }
+            turn.errors.push(error.retryable ? "deferred" : "rejected");
           }
-          turn.errors.push(error.retryable ? "deferred" : "rejected");
-        }
+          recordWrite(span, result);
+          return result;
+        }));
       }
       return turn;
     } finally {
@@ -168,23 +192,35 @@ export class Rail {
       throw new TypeError("maxAttempts must be positive");
     }
     const batch = this.outbox.take(), results: WriteResult[] = [];
-    for (const [index, item] of batch.entries()) {
-      item.attempts++;
-      try { results.push(await this.store.write(item.fact, item.scope)); }
-      catch (error) {
-        if (!(error instanceof StoreError)) {
-          for (const pending of batch.slice(index)) this.outbox.push(pending);
-          throw error;
-        }
-        if (error.retryable && item.attempts < maxAttempts) {
-          this.outbox.push(item);
-          results.push({ status: "deferred", error: error.message });
-        } else {
-          this.outbox.totalDropped++;
-          results.push({ status: "dropped", error: error.message });
-        }
+    return internalSpan(REPLAY_SPAN, { "caura.outbox.batch_size": batch.length }, async replay => {
+      for (const [index, item] of batch.entries()) {
+        item.attempts++;
+        const attributes = writeAttributes(item.fact, item.scope, item.attempts);
+        results.push(await memorySpan(OP_CREATE, item.scope, attributes, async span => {
+          let result: WriteResult;
+          try { result = await this.store.write(item.fact, item.scope); }
+          catch (error) {
+            if (!(error instanceof StoreError)) {
+              for (const pending of batch.slice(index)) this.outbox.push(pending);
+              throw error;
+            }
+            span.fail(error);
+            if (error.retryable && item.attempts < maxAttempts) {
+              this.outbox.push(item);
+              result = { status: "deferred", error: error.message };
+            } else {
+              this.outbox.totalDropped++;
+              result = { status: "dropped", error: error.message };
+            }
+          }
+          recordWrite(span, result);
+          return result;
+        }));
       }
-    }
-    return results;
+      for (const status of ["deferred", "dropped"] as const) {
+        replay.set("caura.outbox." + status, results.filter(r => r.status === status).length);
+      }
+      return results;
+    });
   }
 }

@@ -1,6 +1,7 @@
 import {
   type Fact, type KeystoneRule, type MemoryStore, MemoryScope, StoreError, type WriteResult,
 } from "./models.js";
+import { injectTraceContext } from "./otel.js";
 import { VERSION } from "./version.js";
 
 export { VERSION };
@@ -90,6 +91,9 @@ export class RestMemoryStore implements MemoryStore {
       const headers: Record<string, string> = { "X-API-Key": this.apiKey, "User-Agent": USER_AGENT };
       if (tenant) headers["X-Tenant-ID"] = tenant;
       if (body) headers["Content-Type"] = "application/json";
+      // W3C trace context of the active span, so a Caura server with tracing
+      // enabled joins the caller's trace. Nothing is added without OpenTelemetry.
+      await injectTraceContext(headers);
       const response = await this.fetchImpl(this.baseUrl + path, {
         method, headers, body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal, redirect: "error",

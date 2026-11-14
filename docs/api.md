@@ -226,10 +226,11 @@ Process-local counters on `rail.telemetry`, never reset:
 
 ## OpenTelemetry
 
-Python, with `caura-rail[otel]` installed and an OpenTelemetry SDK configured by
-the application; TypeScript is tracked in
-[#34](https://github.com/caura-ai/caura-rail/issues/34). Without either, Rail
-traces nothing and sends no `traceparent`.
+Python with `caura-rail[otel]` installed, or TypeScript with `@opentelemetry/api`
+installed beside `@caura/rail` (an optional peer dependency, `>=1.0.0 <2`), and an
+OpenTelemetry SDK configured by the application; in TypeScript the SDK must also
+register a context manager, as `NodeSDK` does. Without these, Rail traces nothing
+and sends no `traceparent`.
 Store requests carry the W3C trace context (`traceparent`, `tracestate`) and nothing
 else from the application's context: no `baggage`, whatever propagators the
 application configured.
@@ -244,8 +245,8 @@ application configured.
 Every memory span also has `gen_ai.operation.name`, `gen_ai.provider.name`
 (`caura`), `gen_ai.agent.id` and, when the scope names a tenant,
 `gen_ai.memory.store.id`. A failure sets the span status to error and
-`error.type` to the HTTP status, or to the exception class when there is none;
-exception messages are not recorded. `gen_ai.memory.query.text` is added to the
+`error.type` to the HTTP status, or else to the exception class (Python) or the
+error's `name` (TypeScript); messages are not recorded. `gen_ai.memory.query.text` is added to the
 facts search only when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_CONTENT` is
 `SPAN_ONLY` or `SPAN_AND_EVENT`. Attribute names follow
 [open-telemetry/semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai/blob/e6658f14c9d9ea0760825f029cb82e7673f48fab/docs/gen-ai/gen-ai-spans.md#memory)
