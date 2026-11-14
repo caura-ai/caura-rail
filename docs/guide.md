@@ -462,13 +462,13 @@ when the process exits; see [Reliability](reliability.md) for the full semantics
 
 ## Trace turns with OpenTelemetry
 
-Python only for now; TypeScript is tracked in
-[#34](https://github.com/caura-ai/caura-rail/issues/34). Install the `otel` extra,
-and each turn becomes a trace in whatever OpenTelemetry backend your application
-already exports to (Langfuse, Datadog, Phoenix, Jaeger, ...):
+Install the OpenTelemetry API beside Rail, and each turn becomes a trace in
+whatever OpenTelemetry backend your application already exports to (Langfuse,
+Datadog, Phoenix, Jaeger, ...):
 
 ```bash
 python -m pip install "caura-rail[otel]"
+npm install @opentelemetry/api          # beside @caura/rail; an optional peer dependency
 ```
 
 Rail uses the OpenTelemetry API and never configures an exporter itself; it
@@ -495,6 +495,31 @@ with RestMemoryStore.from_env() as store:
 provider.shutdown()
 ```
 
+In Node.js, `NodeSDK` registers the tracer provider and the async context
+manager that keeps the turn's span active across `await`:
+
+```ts no-run
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { MemoryScope, Rail, RestMemoryStore } from "@caura/rail";
+
+const sdk = new NodeSDK({ traceExporter: new OTLPTraceExporter() });
+sdk.start();
+
+const rail = new Rail({
+  store: RestMemoryStore.fromEnv(process.env),
+  scope: new MemoryScope({ agentId: "support-1" }),
+});
+// Your model call goes in the callback; its own spans nest inside the turn.
+await rail.turn("Remember: We deploy in eu-west-1.", () => "Noted.");
+await sdk.shutdown();
+```
+
+A setup of your own that registers a tracer provider without a context manager
+records the spans but cannot nest them or send `traceparent`. Rail loads
+`@opentelemetry/api` when the application runs; a browser bundle gets no
+tracing.
+
 Each turn is one `caura.rail.turn` span containing:
 
 - two `search_memory` spans, one for the governance rules and one for the facts
@@ -502,8 +527,8 @@ Each turn is one `caura.rail.turn` span containing:
 - whatever your agent traces while it runs;
 - a `create_memory` span per stored fact.
 
-`flush_outbox()` is one `caura.outbox.replay` span with a `create_memory` span
-per queued fact. Store calls carry a W3C `traceparent` header, so a Caura server
+`flush_outbox()` / `flushOutbox()` is one `caura.outbox.replay` span with a
+`create_memory` span per queued fact. Store calls carry a W3C `traceparent` header, so a Caura server
 with tracing enabled adds its own spans to the same trace (server setup:
 [docs/opentelemetry.md](https://github.com/caura-ai/caura/blob/main/docs/opentelemetry.md)).
 
