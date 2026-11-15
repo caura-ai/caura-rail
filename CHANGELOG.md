@@ -6,6 +6,13 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.2.1](https://github.com/caura-ai/caura-rail/compare/v1.2.0...v1.2.1) (2026-11-15)
+
+
+### Documentation
+
+* explain how to release with no user-visible changes ([b740191](https://github.com/caura-ai/caura-rail/commit/b74019127ef586442c7632a3a1cf6fd8bb945879))
+
 ## [1.2.0](https://github.com/caura-ai/caura-rail/compare/v1.1.0...v1.2.0) (2026-11-14)
 
 
