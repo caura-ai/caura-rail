@@ -84,7 +84,9 @@ is posted as a comment; it runs main's copy of
    landed on `main`. It bumps the version in `packages/python/pyproject.toml`,
    `packages/typescript/package.json`, `package-lock.json` and
    `packages/typescript/src/version.ts` together, and adds the changelog section.
-   Edit the changelog wording in that pull request if needed.
+   Edit the changelog wording in that pull request if needed. To release when
+   nothing user-visible has landed, for example so a new npm trusted publisher
+   entry gets its first publish, merge a commit with a `Release-As: X.Y.Z` footer.
 2. Merging it tags `vX.Y.Z` and publishes the GitHub release. That starts the
    release workflow, which rebuilds, re-runs the test suites and the contract
    check, publishes to PyPI and to npm with provenance, and attaches the artifacts
