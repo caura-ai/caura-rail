@@ -473,8 +473,14 @@ npm install @opentelemetry/api          # beside @caura/rail; an optional peer d
 
 Rail uses the OpenTelemetry API and never configures an exporter itself; it
 traces only once your application has set up the OpenTelemetry SDK. The usual
-setup, here exporting over OTLP to the endpoint in
-`OTEL_EXPORTER_OTLP_ENDPOINT`:
+setup below exports over OTLP to the endpoint in `OTEL_EXPORTER_OTLP_ENDPOINT`.
+It needs the SDK and an OTLP exporter, if your application does not have them
+yet:
+
+```bash
+python -m pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http
+npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http
+```
 
 ```python no-run
 from opentelemetry import trace
