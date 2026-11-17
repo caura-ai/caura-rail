@@ -6,6 +6,13 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.2.2](https://github.com/caura-ai/caura-rail/compare/v1.2.1...v1.2.2) (2026-11-17)
+
+
+### Documentation
+
+* install the OpenTelemetry SDK and exporter for the tracing example ([e50b5fd](https://github.com/caura-ai/caura-rail/commit/e50b5fdc88f479e26f7a9566cb49fe39dbe05c7a))
+
 ## [1.2.1](https://github.com/caura-ai/caura-rail/compare/v1.2.0...v1.2.1) (2026-11-15)
 
 
