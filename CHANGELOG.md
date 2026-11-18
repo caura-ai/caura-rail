@@ -6,6 +6,19 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.2.4](https://github.com/caura-ai/caura-rail/compare/v1.2.3...v1.2.4) (2026-11-18)
+
+
+### Dependencies
+
+* bump @opentelemetry/api ([5419be4](https://github.com/caura-ai/caura-rail/commit/5419be487a2f85b28d734d6c73870762bd0689c1))
+* bump @opentelemetry/context-async-hooks from 2.12.1 to 3.1.1 ([cd786db](https://github.com/caura-ai/caura-rail/commit/cd786db0dd2a8f487aa4a482fb80d0fc46b040e1))
+
+
+### Documentation
+
+* send Rail's spans to Datadog ([350c0f7](https://github.com/caura-ai/caura-rail/commit/350c0f72c411bc41ab1172c38a38007b7f5e7c3d))
+
 ## [1.2.3](https://github.com/caura-ai/caura-rail/compare/v1.2.2...v1.2.3) (2026-11-18)
 
 
