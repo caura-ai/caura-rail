@@ -543,6 +543,93 @@ query is added only when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_CONTENT` is
 `SPAN_ONLY` or `SPAN_AND_EVENT`. Names and attributes follow the OpenTelemetry
 GenAI memory conventions; the [API reference](api.md#opentelemetry) lists them.
 
+### Datadog
+
+Pick the setup that matches what your application already runs.
+
+**ddtrace (Python).** Run under `ddtrace-run` (or `import ddtrace.auto`) with
+`DD_TRACE_OTEL_ENABLED=true`, and leave out the SDK setup above. ddtrace then
+serves as the OpenTelemetry tracer provider: each turn's spans become Datadog
+spans in your application's traces and go out through your Datadog Agent.
+
+```bash
+DD_TRACE_OTEL_ENABLED=true ddtrace-run python app.py
+```
+
+Keep the flag on whenever ddtrace and Rail share a process:
+
+- With the flag on, an OpenTelemetry SDK set up as well is refused
+  (OpenTelemetry logs `Overriding of current TracerProvider is not allowed`)
+  and exports nothing, so no span is sent twice.
+- With the flag off, Rail's spans go to the SDK, but ddtrace's httpx
+  integration replaces Rail's `traceparent` with its own. Each store request
+  then starts a ddtrace trace of its own, and the server's spans join those
+  instead of the turn.
+
+**dd-trace (Node.js).** Register dd-trace's tracer provider instead of starting
+`NodeSDK`, before anything else registers one:
+
+```ts no-run
+import tracer from "dd-trace";
+
+tracer.init();
+new tracer.TracerProvider().register(); // also the context manager and W3C propagator
+```
+
+A `NodeSDK` started afterwards is refused. One started before keeps its own
+context manager, so dd-trace no longer sees the turn as the parent of the
+store requests: it traces each request apart and tells the server to join that
+trace instead.
+
+**No Datadog tracer.** Keep the SDK setup above and export to a Datadog Agent
+with [OTLP ingest](https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest_in_the_agent/)
+turned on (`OTEL_EXPORTER_OTLP_ENDPOINT=http://<agent host>:4318`), or, without
+an Agent, straight to Datadog's
+[OTLP traces intake](https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest/traces/):
+
+```bash
+# otlp.<your Datadog site>: otlp.datadoghq.com, otlp.us5.datadoghq.com, otlp.datadoghq.eu, ...
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://otlp.datadoghq.com/v1/traces
+export OTEL_EXPORTER_OTLP_TRACES_HEADERS="dd-api-key=$DD_API_KEY"
+export OTEL_SERVICE_NAME=support-agent
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=prod
+```
+
+Datadog files the spans under `service:support-agent env:prod`, and reads their
+`gen_ai.*` attributes too: in the check below, each turn and its memory calls
+also appeared in LLM Observability, with the service name as the ML app.
+
+What has been checked, as of 2026-11-18:
+
+| Setup | Status |
+| --- | --- |
+| Python SDK to Datadog's OTLP traces intake | Checked end to end against Caura's staging server: the turn, its memory calls, and the server's request and memory spans shared one trace id in Datadog, and no span held memory text. |
+| Python with ddtrace and `DD_TRACE_OTEL_ENABLED` | Checked against a stand-in Agent: one trace, and the store requests carry its trace id. |
+| Node.js with dd-trace's `TracerProvider` | Checked against a stand-in Agent, as above. |
+| An OpenTelemetry SDK exporting to a Datadog Agent | Expected to work; not checked. |
+
+**Your Datadog organization and Caura's.** Datadog assembles a trace from the
+spans in one organization. Rail's spans go to yours; with managed Caura, the
+server's spans go to Caura's. Both halves carry the same trace id, because the
+server continues the trace that `traceparent` names. Your half shows each turn,
+its recall and writes, and how long each memory call took from your side. To
+look into the server's side of a slow or failed call, give Caura support the
+trace id from that trace in Datadog. Caura's server logs carry it, and its
+spans can be found by it while Datadog keeps them: every span for 15 minutes,
+and after that the ones a retention filter indexed. A self-hosted Caura server can report to your own organization
+([server setup](https://github.com/caura-ai/caura/blob/main/docs/opentelemetry.md)),
+and then the whole trace is yours. Behind Google Cloud Run, as on the staging
+check above, the server's spans keep the turn's trace id but do not nest under
+the memory calls: Cloud Run's front end replaces the parent span id in
+`traceparent` with one of its own, which Datadog never receives.
+
+**Headers your Datadog tracer adds.** Under ddtrace or dd-trace, Rail still
+sets only `traceparent` and `tracestate` itself, but the tracer's HTTP
+integration adds its own headers to every outgoing request, Caura's included:
+`x-datadog-*`, and by default `baggage` carried in from the request your
+application is serving. To keep baggage off outgoing requests (all of them, not
+just Caura's), set `DD_TRACE_PROPAGATION_STYLE_INJECT=datadog,tracecontext`.
+
 ## Async Python
 
 `AsyncRail` and `AsyncRestMemoryStore` mirror the synchronous API with `async`
