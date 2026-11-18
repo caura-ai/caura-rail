@@ -6,6 +6,14 @@ written by [release-please](https://github.com/googleapis/release-please) from t
 [Conventional Commits](https://www.conventionalcommits.org/) that landed on main;
 their wording can be edited in the release pull request before it merges.
 
+## [1.2.3](https://github.com/caura-ai/caura-rail/compare/v1.2.2...v1.2.3) (2026-11-18)
+
+
+### Dependencies
+
+* bump @opentelemetry/core from 2.12.1 to 3.1.1 ([6efedd1](https://github.com/caura-ai/caura-rail/commit/6efedd1b93dad722e3e3620a307483af7c480be0))
+* bump the github-actions group with 2 updates ([2cfb2fa](https://github.com/caura-ai/caura-rail/commit/2cfb2fae0d38bde1d97df414042854e0fd5e2a6e))
+
 ## [1.2.2](https://github.com/caura-ai/caura-rail/compare/v1.2.1...v1.2.2) (2026-11-17)
 
 
