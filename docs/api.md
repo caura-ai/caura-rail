@@ -233,7 +233,8 @@ register a context manager, as `NodeSDK` does. Without these, Rail traces nothin
 and sends no `traceparent`.
 Store requests carry the W3C trace context (`traceparent`, `tracestate`) and nothing
 else from the application's context: no `baggage`, whatever propagators the
-application configured.
+application configured. A Datadog tracer's HTTP integration adds headers of its
+own ([guide](guide.md#datadog)).
 
 | Span | Kind | Attributes |
 |---|---|---|
